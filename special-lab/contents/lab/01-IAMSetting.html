@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>01-IAMSetting</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">01-IAMSetting</h1>
+</header>
+<h1 id="lab01-開発者iam-ユーザの作成およびiam-ロールの動作確認">Lab01: 開発者IAM ユーザの作成およびIAM ロールの動作確認</h1>
+<p>このハンズオンラボでは、AWS 上でサーバレスアーキテクチャによるWeb アプリケーションを一通り実装・構築することで、開発者がAWS 上でシステムを開発する際に押さえておかなければならないポイントを学びます。</p>
+<p>このラボで以下のことを学びます。</p>
+<ul>
+<li>AWS API と SDK の基本的な概念と使い方</li>
+<li>開発観点でのセキュリティの考え方（アクセスキー、IAM ロール、署名v4）</li>
+<li>統合開発環境の準備と利用方法(AWS Cloud9)</li>
+<li>AWS リソースの作成方法（マネージメントコンソール、CLI、CloudFormation）</li>
+<li>サーバレスアーキテクチャの概要と実装方法</li>
+</ul>
+<p>それでは、ラボを進めていきましょう。</p>
+<hr />
+<h2 id="開発用のiam-ポリシーとiam-ユーザの作成">開発用のIAM ポリシーとIAM ユーザの作成</h2>
+<p>AWS アカウント作成後、アカウント作成で指定したEmail/パスワードを利用してマネジメントコンソールにログインすることはできますが、このユーザはルートアカウントと呼びアカウント内のAWS リソースに対してすべての操作が可能であり、その権限を制限することができません。そのため、ルートアカウントの認証情報が漏れてしまうと非常に危険です。<br />
+よって、AWS上での開発・運用における推奨事項はルートアカウントを使い続けるのではなく、代わりにIAM ユーザを作成して利用します。 IAM ユーザは、IAM ポリシーにより細かなアクセスコントロールを行うことができます。</p>
+<p>このラボでも、開発者用のIAM ユーザを作成して、必要最小限の権限を割り当てて進めていきます。</p>
+<h3 id="iam-ポリシーの作成">IAM ポリシーの作成</h3>
+<p>まずは、権限の範囲を定義するIAM ポリシーを作成します。<br />
+IAM ポリシーは、IAM ユーザに割り当てることでユーザのアクセス権限を設定することできます。それではIAM ポリシーを作成してみましょう。</p>
+<ol type="1">
+<li><p>以下のURLからマネジメントコンソールにアクセスします。</p>
+<p><a href="https://console.aws.amazon.com/" class="uri">https://console.aws.amazon.com/</a></p></li>
+<li><p>以下のようなサインイン画面が表示されたら、AWS アカウント作成時に指定したEmail/パスワードでログインします。</p>
+<p><img src="images/Lab01-RootSignin.png" /></p>
+<p>※ もし、上記とは異なる画面が出た場合は、<strong>ルートアカウント認証情報を使用してサインイン</strong> リンクをクリックして切り替えてください。 （ルートアカウントの認証情報をお持ちでない場合は、任意のIAMユーザでログインしてください。ただし、IAM ユーザの作成ができる権限が必要です。）</p></li>
+<li><p>マネージメントコンソール にログインしたら、画面左上の <strong>サービス</strong> をクリックします。ここからAWS の様々なサービス画面にアクセスできます。この中で、<strong>セキュリティ、アイデンティティ、コンプライアンス</strong> カテゴリの中の <strong>IAM</strong> をクリックします。</p></li>
+<li><p><strong>IAM</strong> (Identity and Access Manamgement) のサービス画面が表示されたら、左側ナビゲーションペインで、<strong>ポリシー</strong> をクリックします。</p></li>
+<li><p><strong>ポリシーの作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ポリシーの作成</strong> 画面で、<strong>ビジュアルエディタ</strong> というタブの横にある <strong>JSON</strong> タブをクリックします。</p></li>
+<li><p>以下のJSON をコピーして、JSON タブ内のエディタに上書きで貼り付けます。</p>
+<pre><code>{
+    &quot;Version&quot;: &quot;2012-10-17&quot;,
+    &quot;Statement&quot;: [
+        {
+            &quot;Sid&quot;: &quot;DevAWSomePolicy01&quot;,
+            &quot;Effect&quot;: &quot;Allow&quot;,
+            &quot;Action&quot;: [
+                &quot;sns:*&quot;,
+                &quot;application-autoscaling:*&quot;,
+                &quot;tag:GetResources&quot;,
+                &quot;cognito-identity:*&quot;,
+                &quot;s3:*&quot;,
+                &quot;apigateway:*&quot;,
+                &quot;logs:*&quot;,
+                &quot;cloudformation:*&quot;,
+                &quot;dynamodb:*&quot;,
+                &quot;cloud9:*&quot;,
+                &quot;rekognition:*&quot;,
+                &quot;cognito-sync:*&quot;,
+                &quot;iam:*&quot;,
+                &quot;cloudwatch:*&quot;,
+                &quot;lambda:*&quot;,
+                &quot;ec2:*&quot;,
+                &quot;cognito-idp:*&quot;
+            ],
+            &quot;Resource&quot;: &quot;*&quot;
+        }
+    ]
+}
+</code></pre></li>
+<li><p>画面右下の <strong>ポリシーの確認</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ポリシーの確認</strong> 画面で以下の内容を入力します。（列挙されていない入力項目はデフォルトのままにしておきます。</p>
+<table>
+<tbody>
+<tr class="odd">
+<td><strong>名前</strong></td>
+<td><code>DevAWSomePolicy</code></td>
+</tr>
+</tbody>
+</table></li>
+<li><p>画面右下の <strong>ポリシーの作成</strong> ボタンをクリックします。<strong>DevAWSomePolicy が作成されました。</strong> と表示されます。開発者用のIAM ポリシーの作成は以上です。</p></li>
+</ol>
+<h3 id="iam-ユーザの作成">IAM ユーザの作成</h3>
+<ol type="1">
+<li><p>次はラボ用のIAM ユーザを作成します。画面左のナビゲーションペインで、<strong>ユーザー</strong> をクリックします。</p></li>
+<li><p><strong>ユーザを追加</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ユーザー詳細の設定</strong> 画面にて以下の内容を入力します。（列挙されていない項目はデフォルトのままとしておきます。）</p>
+<table>
+<tbody>
+<tr class="odd">
+<td>ユーザ名</td>
+<td><code>DevAWSomeUser</code></td>
+</tr>
+<tr class="even">
+<td>アクセスの種類</td>
+<td><strong>プログラムによるアクセス</strong> にチェック、<BR> <strong>AWS マネジメントコンソールへのアクセス</strong> にチェック（さらに入力項目が増えます）</td>
+</tr>
+<tr class="odd">
+<td>コンソールのパスワード</td>
+<td><strong>カスタムパスワード</strong> を選択し、パスワードを入力（このパスワードは忘れないようにしてください。）</td>
+</tr>
+<tr class="even">
+<td>パスワードのリセットが必要</td>
+<td>チェックを<strong>外す</strong></td>
+</tr>
+</tbody>
+</table>
+<p>以下のようになります。</p>
+<p><img src="images/Lab01-IAMUser-Create.png" /></p></li>
+<li><p><strong>次のステップ：アクセス権限</strong> ボタンをクリックします。</p></li>
+<li><p>次の画面の <strong>アクセス許可の設定</strong> で、<strong>既存のポリシーを直接アタッチ</strong> をクリックします。</p></li>
+<li><p>画面下半分にポリシーの一覧が表示されます。<strong>検索</strong> に’DevAWSomePolicy’ と入力すると、先ほど作成したポリシーに絞り込まれて表示されるので、‘DevAWSomePolicy’ にチェックを入れます。</p></li>
+<li><p>画面右下の <strong>次のステップ:タグ</strong> ボタンをクリックします。</p></li>
+<li><p><strong>タグの追加（オプション）</strong> 画面では何も入力せずに、画面右下の <strong>次のステップ：確認</strong> ボタンをクリックします。</p></li>
+<li><p><strong>確認</strong> 画面が表示されたら、画面右下の <strong>ユーザの作成</strong> ボタンをクリックします。</p></li>
+<li><p>画面に <strong>成功</strong> と表示れます。成功ダイアログの中に <strong>AWS マネジメントコンソールへのアクセス権を持つユーザーは「https://XXXXXXXXXX.signin.aws.amazon.com/console」でサインインできます</strong> と表示されていますので、このURL をテキストファイルなどにコピーしておきます。</p></li>
+<li><p><strong>.csv のダウンロード</strong> ボタンをクリックします。credentials.csv ファイルがダウンロードできますので、中身をExcel やテキストエディタで開き、Access Key ID とSecret Access Key を確認します。（後で使います）</p></li>
+<li><p>画面右下の<strong>閉じる</strong> ボタンをクリックします。ユーザ一覧に’DevAWSomeUser’ が追加されていることを確認します。以上で開発者用IAM ユーザの作成は終了です。</p></li>
+</ol>
+<h3 id="iam-ユーザでサインインする">IAM ユーザでサインインする</h3>
+<ol type="1">
+<li><p>次は今作成したIAM ユーザでマネジメントコンソールにサインインしなおします。先ほどコピーしたサインイン用のURL (例: https://XXXXXXXXXX.signin.aws.amazon.com/console) にブラウザでアクセスします。</p></li>
+<li><p>以下のようなIAM ユーザ用のログイン画面が表示されます。</p>
+<figure>
+<img src="images/Lab01-IAMSignin.png" alt="IAMユーザサインイン" /><figcaption>IAMユーザサインイン</figcaption>
+</figure></li>
+<li><p>以下の内容を入力して、<strong>サインイン</strong> ボタンをクリックします。（ <strong>アカウント</strong> にはご自身のアカウントID が入力済みなのでそのままとしておきます。）</p>
+<table>
+<tbody>
+<tr class="odd">
+<td>ユーザ名</td>
+<td><code>DevAWSomeUser</code></td>
+</tr>
+<tr class="even">
+<td>パスワード</td>
+<td>自分で入力したパスワード</td>
+</tr>
+</tbody>
+</table></li>
+<li><p>マネジメントコンソールにログインできることを確認してください。(ログインできなかった場合は、再度ルートアカウントでログインしなおすことで、DevAWSomeUser のパスワードの変更ができます。）</p></li>
+</ol>
+<p>以上で、ラボ用のIAMユーザの作成が完了しました。なお、IAM における推奨事項には以下のような内容があります。</p>
+<ul>
+<li>ルートアカウントを使い続けることは止め、IAM ユーザを作成して利用する</li>
+<li>ルートアカウントや権限の強いIAMユーザ にはMFA を有効にする</li>
+<li>IAM ユーザには最小権限の法則で権限を付与する</li>
+<li>強力なパスワードポリシーを利用する。定期的に変更する。</li>
+<li>不要なアクセスキーは作成しない。</li>
+<li>複数IAM ユーザに同じ権限を付与する場合は、IAM グループを利用する（開発者IAMグループなど）</li>
+</ul>
+<hr />
+<h2 id="アクセスキーとiam-ロールの役割の確認">アクセスキーとIAM ロールの役割の確認</h2>
+<p><strong>これ以降の内容はオプションです。時間がない場合はスキップしてかまいません。</strong></p>
+<p>AWS 上で動作するシステムを開発する場合、マネージド型のAWS サービスを活用することが多くなります（例えば、Lambda やS3 やDynamoDB、SQS/SNS など)。プログラムからそのようなAWS サービスを操作するにはAWS API の呼び出しが必要となります。<br />
+AWS API の呼び出しには、そのサービスに対するアクセス権限が必要になります。人がマネジメントコンソールにアクセスする際にはIAM ユーザ名/パスワードを認証情報として利用しますが、プログラムからAWS API にアクセスする場合は、認証情報としてアクセスキーを利用します。アクセスキーは、アクセスキーID とシークレットアクセスキーのペアで構成されています。</p>
+<p><img src="images/Lab01-Authentication.png" /></p>
+<p>ここでは、EC2 インスタンスを起動し、EC2 インスタンスのOS 内で動作するプログラムからアクセスキーを利用してAWS API の呼び出しを実行します。また、アクセスキーを利用する際の問題点を把握して、IAM ロールの役割を確認します。</p>
+<h3 id="ec2-インスタンスの起動">EC2 インスタンスの起動</h3>
+<ol type="1">
+<li><p>マネジメントコンソールの <strong>サービス</strong> から <strong>EC2</strong> を選択します。</p></li>
+<li><p>マネジメントコンソール右上のリージョン選択で、<strong>オレゴン</strong> を選択します。</p></li>
+<li><p>画面中央の <strong>インスタンスの作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ステップ1: Amazon マシーンイメージ(AMI)</strong> 画面で、一番上の <strong>Amazon Linux 2 AMI (HVM), SSD Volume Type</strong> の <strong>選択</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ステップ2: インスタンスタイプの選択</strong> 画面で、インスタンスタイプ <strong>t2.micro</strong> が選択されていることを確認して、画面下の <strong>確認と作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ステップ7: インスタンス作成の確認</strong> 画面で、画面右下の <strong>作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>既存のキーペアを選択するか、新しいキーペアを作成します。</strong> ダイアログで、画面中央のプルダウンで <strong>新しいキーペアの選択</strong> を選択します。</p></li>
+<li><p><strong>キーペア名</strong> に “DevAWSomedayKey” と入力して <strong>キーペアのダウンロード</strong> ボタンをクリックします。</p></li>
+<li><p>“DevAWSomedayKey.pem” というファイルがダウンロードされます。後でEC2 インスタンスにログインするときに利用しますので、ダウンロード場所を覚えておいてください。</p></li>
+<li><p><strong>インスタンスの作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>作成ステータス</strong> 画面の右下の <strong>インスタンスの表示</strong> ボタンをクリックします。</p></li>
+<li><p>インスタンス一覧の中で、<strong>ステータスチェック</strong> 列が <strong>初期化しています</strong> と表示されているインスタンスが、作成したインスタンスになります。</p></li>
+<li><p>作成したインスタンスのチェックボックスをチェックします。</p></li>
+<li><p>画面下の <strong>説明</strong> タブ内のパブリックDNS をコピーします。リモートからSSH でログインするのに利用します。</p></li>
+<li><p><strong>インスタンスの状態</strong> が <strong>runnning</strong> 状態になっていることを確認したら、SSH でこのインスタンスにログインします。<br />
+ログイン方法は、別手順「Appendix: EC2 へのSSH 接続方法」を参照してください。</p></li>
+<li><p>正常にログインできると以下のように表示されます。</p>
+<pre><code>       __|  __|_  )
+       _|  (     /   Amazon Linux 2 AMI
+      ___|\___|___|
+
+https://aws.amazon.com/amazon-linux-2/
+4 package(s) needed for security, out of 19 available
+Run &quot;sudo yum update&quot; to apply all updates.
+[ec2-user@ip-172-31-29-71 ~]$</code></pre></li>
+</ol>
+<blockquote>
+<p>注意： このラボが実施終わりましたら、EC2 インスタンスは削除するようにしてください。このラボの手順の最後に削除処理方法を記載しています。</p>
+</blockquote>
+<h3 id="ec2-インスタンス内で実行されるpython-プログラムからaws-サービスにアクセスしてみる">EC2 インスタンス内で実行されるPython プログラムからAWS サービスにアクセスしてみる</h3>
+<p>Python を利用してEC2 インスタンス からAWS サービスを呼び出してみます。認証情報がどのように利用されるかを確認します。</p>
+<ol type="1">
+<li><p>最初に、プログラムからAWS サービスにアクセスするための設定を実施します。以下のコマンドをターミナルで実行してください。</p>
+<pre><code>aws configure
+</code></pre></li>
+<li><p>最初はAccess Key を設定していない場合にどのような動作になるのかを確認するため、以下のように <strong>AWS Access key ID</strong> /<strong>AWS Secret Access Key</strong> には何も入力せずに、Enter を押してください。<strong>Default region name</strong> には、<code>us-west-2</code> と入力して、Enter を押してください。最後の <strong>Default output format</strong> も未入力のまま Enter を押してください。</p>
+<pre><code>AWS Access Key ID [None]:
+AWS Secret Access Key [None]:
+Default region name [None]:  us-west-2
+Default output format [None]:</code></pre></li>
+<li><p>Python 3 とAWS SDK for Python であるBoto 3 をインストールします。以下のコマンドをターミナル内で実施してください。</p>
+<pre><code>sudo yum -y install python3
+sudo pip3 install boto3
+</code></pre></li>
+<li><p>ターミナル内で、“python3” とタイプして、Enter を押してください。以下のようにPython のインタラクティブシェルが起動します。</p>
+<pre><code>[ec2-user@ip-172-31-22-80 ~]$ python3
+Python 3.7.0rc1 (default, Aug  1 2018, 03:51:55)
+[GCC 7.3.1 20180303 (Red Hat 7.3.1-5)] on linux
+Type &quot;help&quot;, &quot;copyright&quot;, &quot;credits&quot; or &quot;license&quot; for more information.
+&gt;&gt;&gt;</code></pre></li>
+<li><p>Python インタラクティブシェル内で、以下のコードを実行しEC2 サービスにアクセスしてみます。以下の<code>describe_instances()</code> メソッドは、自分のアカウント内で起動しているEC2 インスタンス情報一覧を取得するメソッドです。</p>
+<pre><code>import boto3
+client = boto3.client(&#39;ec2&#39;)
+client.describe_instances()
+</code></pre>
+<p>アクセスキーが設定されていないため、以下のようなエラーが出力されます。</p>
+<pre><code>…略…
+raise NoCredentialsError
+botocore.exceptions.NoCredentialsError: Unable to locate credentials
+</code></pre></li>
+<li><p>次に、アクセスキーを設定したうえで、再度実行してみます。一旦 Python シェル内で、<code>exit()</code> とタイプしてEnter をクリックします。</p></li>
+<li><p>IAM ユーザを作成したときにダウンロードしたcredentials.csv を開き、<strong>Access key ID</strong> と <strong>Secret access key</strong> の値を確認します。</p></li>
+<li><p>SSH ターミナル上で、<code>aws configure</code> とタイプしてEnter を押します。</p></li>
+<li><p>今度は、以下のように <strong>AWS Access key ID</strong> /<strong>AWS Secret Access Key</strong> に csv フィルの内容を設定します。region / ouptput format の設定は不要です。（以下は 例ですので、実際にご自身のcredentials.csv の内容を設定してください。）</p>
+<pre><code>AWS Access Key ID [None]: AKIAI7K4HXXXXXXXXXXX
+AWS Secret Access Key [None]:  Is9vUlrXXXXXXX+/zIWfuPXXXXXXXXXXX
+Default region name [us-west-2]:
+Default output format [None]:</code></pre></li>
+<li><p>再度Python シェル<code>python3</code> を起動し、以下のコードを実行します。</p>
+<pre><code>import boto3
+client = boto3.client(&#39;ec2&#39;)
+client.describe_instances()</code></pre>
+<p>今度は、EC2 インスタンスの情報がJSON 形式で取得できます。 このようにプログラムからAWSサービスにアクセスするにはアクセスキーが必要となります。</p></li>
+<li><p><code>aws configure</code> により設定されたアクセスキーは、ホームディレクトリの .aws というディレクトリ内の <strong>credentials</strong> というファイルに保存されます。以下のコマンドで確認できます。(python シェルは、exit() で終了してから実行してください。)</p>
+<pre><code>cat /home/ec2-user/.aws/credentials</code></pre></li>
+</ol>
+<h3 id="iamロールを利用したアクセス権限の付与">IAMロールを利用したアクセス権限の付与</h3>
+<p>認証情報であるアクセスキーは、credentials というファイルに保存されていました。このアクセスキーを利用することで、EC2 上で動作するプログラムは、AWS サービスに対するアクセス権限を得ることができ、サービスを呼び出すことができました。<br />
+しかし、静的な認証情報をファイルに保存しておくと認証情報が流出するというリスクが発生します。例えば、EC2 の場合は、カスタムAMI を作成したときに、誤って認証情報が組み込まれたままAMI を作成していると、アクセスキー入りのEC2 インスタンスが乱立していまう可能性が出てきます。もしくは、アクセスキーをプログラムコード内に直接記述して、コードから利用することもできますが、コードは通常複数の開発者で共有されるため、より認証情報の流出のリスクが高まります。</p>
+<p>ベストな方法としては静的な認証情報をファイルに保存しないことです。その代わりに利用できるのが、IAM ロールを利用した一時的な認証情報を動的に取得して、プログラムから利用するという方法となります。</p>
+<p>それでは、IAM ロールを利用した方法を試してみましょう。</p>
+<ol type="1">
+<li><p>まずは、先ほど設定したアクセスキーを削除します。以下のコマンドを実行して<code>credentials</code> ファイルを削除します。</p>
+<pre><code>rm /home/ec2-user/.aws/credentials</code></pre></li>
+<li><p>次にマネジメントコンソールで、IAMロールを作成します。マネジメントコンソールの <strong>サービス</strong> をクリックして、<strong>IAM</strong> を選択します。</p></li>
+<li><p>ナビゲーションペインで、<strong>ロール</strong> をクリックします。</p></li>
+<li><p><strong>ロールの作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>このロールを使用するサービスを選択</strong> 画面で、一番上の<strong>EC2</strong> を選択して、画面右下の <strong>次のステップ: アクセス権限</strong> ボタンをクリックします。</p></li>
+<li><p><strong>アクセス権限ポリシーをアタッチする</strong> 画面にて、<strong>検索</strong> に “AmazonEC2ReadOnlyAccess” と入力し、下の一覧で絞り込まれた “AmazonEC2ReadOnlyAccess” をチェックします。</p></li>
+<li><p>画面右下の <strong>次のステップ:確認</strong> ボタンをクリックします。</p></li>
+<li><p><strong>確認</strong> 画面で <strong>ロール名</strong> に “DevAWSomeTestRole” と入力して <strong>ロールの作成</strong> ボタンをクリックします。（※もしエラーが表示されたら、ロール名の後ろに半角空白が含まれていないかチェックしてください）</p></li>
+<li><p>ロールの一覧の中で、“DevAWSomeTestRole” を確認してください。<strong>信頼されたエンティティ</strong> に “AWSサービス: ec2” と表示されているのが確認できます。このIAM ロールはEC2 で利用できることを示しています。一覧に表示されていない場合は、一覧の右上の更新ボタン(矢印が丸まったアイコン)をクリックしてください。</p>
+<p><img src="images/Lab01-rolelist.png" /></p></li>
+<li><p>作成したIAM ロールをEC2 に割り当てます。マネージメントコンソールの <strong>サービス</strong> から <strong>EC2</strong> を選択します。</p></li>
+<li><p>ナビゲーションペインの <strong>インスタンス</strong> をクリックして、インスタンス一覧を表示します。インスタンスの中から先ほど作成したEC2 インスタンスを選択し右クリックします。（見つからない場合は、一覧右側にスクロールすると <strong>キー名</strong> 欄があり、その中が “DevAWSomedayKey” となっているインスタンスが対象のインスタンスです。）</p></li>
+<li><p>対象インスタンスを右クリックして、表示されたメニューから <strong>インスタンスの設定</strong> &gt; <strong>IAM ロールの割り当て/置換</strong> をクリックします。</p></li>
+<li><p><strong>IAM ロールの割り当て/置換</strong> 画面の <strong>IAM ロール</strong> でさきほど作成した “DevAWSomeTestRole” を選択し、<strong>適用</strong> ボタンをクリックします。<br />
+<strong>IAM ロールオペレーションに成功しました</strong> と表示されたら、<strong>閉じる</strong> ボタンをクリックします。</p></li>
+<li><p>EC2 のSSH ターミナル画面で、先ほどと同様に “python3” を実行し、シェル内で、以下のコードを実行してみてください。</p>
+<pre><code>import boto3
+client = boto3.client(&#39;ec2&#39;)
+client.describe_instances()</code></pre>
+<p>前の手順で <strong>.aws/credentials</strong> ファイルを削除していて、アクセスキーが設定されていないのに正常にアクセスできました。これはIAM ロールを EC2 インスタンスに割り当てたことにより、プログラム(boto3) が動的に一時的認証情報を取得できているためです。 では、一時的認証情報はどこに存在しているのでしょうか？</p></li>
+<li><p>一旦 python シェルを “exit()” で終了して、SSHターミナルで以下のコマンドを実行してください。</p>
+<pre><code>curl http://169.254.169.254/latest/meta-data/iam/security-credentials/</code></pre>
+<p>以下のように出力されます。これは、EC2 インスタンスに割り当てたIAM ロール名です。なお、169.254.169.254 というIP アドレスは、EC2 インスタンス内部からEC2 のメタデータにアクセスするのに利用します。</p>
+<pre><code>DevAWSomeTestRole</code></pre>
+<p>次に、以下のようにURL の後ろに上記のIAM ロール名を付与してcurl で実行します。</p>
+<pre><code>curl http://169.254.169.254/latest/meta-data/iam/security-credentials//DevAWSomeTestRole</code></pre>
+<p>以下のように出力されます。</p>
+<pre><code>{
+  &quot;Code&quot; : &quot;Success&quot;,
+  &quot;LastUpdated&quot; : &quot;2018-04-06T11:37:55Z&quot;,
+  &quot;Type&quot; : &quot;AWS-HMAC&quot;,
+  &quot;AccessKeyId&quot; : &quot;ASIAIWUS5WZK7Z7FSY2Q&quot;,
+  &quot;SecretAccessKey&quot; : &quot;dRy4BcvSmr1uQE4vyQhXyY9yF6cjfWpm9a+Jc853&quot;,
+  &quot;Token&quot; : &quot;FQoDYXdzEI3//////////wEaDH6t0Lq8MYc2J8aoyyK3AzHPx76By3++QXS8KtY4kW2HhWbLQqCli0WUBXLkYpA+Tgr+9PyPCBXvRwRtZ7PAiSIkP32AG1DnQs5xj68O0/vEw+75PVYgabpVljVhnKkqIvENw5Qj9EhY3WsA2rVuzQ8gUfI1DTCDyVBI2CNLbEl+r58F03xEKGNe5rq9mi1jGwQUYNdPsBtpDMoqEPgA3OI5k5nZzZf60AUw7ZxwfDyFgulySYaNCZkdAHiRHq16NRx0a2SSqlJsbghcu2B5DBEXIq56Phm5P6X8DRxudNt3GfcAtT/7KwQ7nzaLM00Ec6WJtIFsOHlk1bLvn7eOH1msuL8IuabdBiogfGPZMBvdjoMI6pZpLDQU28VQSWafNnf33UVjO/yKqZClzLZGgFZhn3waleBjTgbe2pgtXlVqfrSXzoi0KkLCNReOVU4ZbAf4yiaFumn8OPU9hdSmlYqPGB1E5xmgC0P5oZZwmfdy7lRlxcn9W4QnZeD+xzQ6xFAczfG0HjNwJk8RuhJLw9qPUHxkAc6WsYt/cVav5f0MMppDKYVs6YS+Tgz80KpHrsrsRq/sKfo8WChd//3C7mtL6Bwlsf8og7id1gU=&quot;,
+  &quot;Expiration&quot; : &quot;2018-04-06T17:59:26Z&quot;
+}
+</code></pre>
+<p>この結果の中には、<strong>AccessKeyId</strong> 、<strong>SecretAccessKey</strong> および <strong>Token</strong> という内容が含まれています。<br />
+また、<strong>Expiration</strong> で有効期限が示されています。これが動的に払い出された一時的な認証情報です。boto3 を用いたPython プログラムでこの認証情報が内部的に利用されています。一時的認証情報は、期限が決まっている動的に払い出された認証情報で、通常の <strong>AccessKeyID</strong> / <strong>SecretAccessKey</strong> 以外にセッションを表す <strong>Token</strong> で構成されます。<br />
+IAM ロールを利用することで、EC2 内部で一時的な認証情報を利用でき、静的なアクセスキーを保存しておく必要がなくなります。</p>
+<p>なお、ローカルの開発端末などで開発する場合は、アクセスキーが必要となります。その場合は、開発者権限は最小権限の法則に従って定義してください。また本番環境は別アカウントとしてそもそも権限を分離してしまうということも可能です。</p>
+<p>今回はEC2 インスタンスで説明しましたが、AWS サービスが他のAWS サービスと連携する際にも、IAM ロールが利用されます。AWS サービスと連携するプログラムを開発する場合</p></li>
+</ol>
+<hr />
+<h2 id="終了処理">終了処理</h2>
+<p>以上でこのラボの内容は終わりですが、このラボで作成したEC2 インスタンス、キーペア、 IAM ロールはこの後のラボでは不要ですので削除してください。（IAMユーザ: DevAWSomeUser および IAMポリシー:DevAWSomePolicy は引き続き次のラボで利用しますので削除しないでください。）</p>
+<ol type="1">
+<li><p>EC2インスタンスの削除： インスタンスを右クリックして、<strong>インスタンスの状態</strong> ＞ <strong>削除</strong> をクリックし、<strong>インスタンスの削除</strong> 画面で <strong>はい、削除する</strong> をクリックします。</p></li>
+<li><p>キーペアの削除： <strong>サービス</strong> から <strong>EC2</strong> を選択し、ナビゲーションペインで、<strong>キーペア</strong> をクリック、<strong>DevAWSomedayKey</strong> を選択して、<strong>削除</strong> ボタンをクリックします。</p></li>
+<li><p>IAMロールの削除: <strong>サービス</strong> から <strong>IAM</strong> を選択し、ナビゲーションペインで、<strong>ロール</strong> をクリック。<strong>DevAWSomeTestRole</strong> をチェックして、<strong>ロールの削除</strong> ボタンをクリック。<strong>ロールの削除</strong> 画面で <strong>はい、削除します</strong> をクリックします。</p></li>
+</ol>
+<p>以上で、このラボは終了です。</p>
+</body>
+</html>

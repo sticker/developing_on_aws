@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>A01-Rekognition-Celebrities</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">A01-Rekognition-Celebrities</h1>
+</header>
+<h1 id="追加lab01-有名人の認識機能の追加">追加Lab01: 有名人の認識機能の追加</h1>
+<p>この追加Lab は任意です。<br />
+この追加Lab では、Amazon Recognition の有名人の認識機能を利用して、有名人の写真をアップロードしたら、自動的に有名人の名前がラベル付けされるように機能拡張します。</p>
+<p>なお、本ラボでは詳細なステップは記述しません。幾つかの参考情報やヒント、コードスニペットを記載しますので取り組んでみてください。</p>
+<hr />
+<h2 id="amazon-rekognition-有名人の認識">Amazon Rekognition 有名人の認識</h2>
+<p><a href="https://docs.aws.amazon.com/ja_jp/rekognition/latest/dg/celebrities.html">有名人の認識 開発者ガイド</a></p>
+<h2 id="コードの追加箇所">コードの追加箇所</h2>
+<p>コードを追加すべき箇所はどこか考えてみましょう。</p>
+<p>ヒント：これまで作成したアプリケーションで、Rekognition を利用している箇所はどこだったでしょうか？</p>
+<h2 id="コードの追加内容">コードの追加内容</h2>
+<p>有名人の認識機能を利用するコードを記述します。 コードを記述するには、利用するSDK を調べる必要があります。 今回のコード追加はPython で記述しますので、Python 用のSDK である boto3 のドキュメントを調べます。</p>
+<ul>
+<li><p><a href="http://boto3.readthedocs.io/en/latest/index.html">Boto3 Documentation</a></p></li>
+<li><p><a href="http://boto3.readthedocs.io/en/latest/reference/services/rekognition.html#client">Boto3 Rekognition Client</a></p></li>
+<li><p><a href="http://boto3.readthedocs.io/en/latest/reference/services/rekognition.html#Rekognition.Client.recognize_celebrities">Boto3 有名人の認識 recognize_celebrities</a></p></li>
+</ul>
+<h3 id="コードスニペット">コードスニペット</h3>
+<pre><code>response = rek.recognize_celebrities(
+    Image={
+        &#39;S3Object&#39;: {
+            &#39;Bucket&#39;: bucket,
+            &#39;Name&#39;: key
+        }
+})
+all_celebrities = [label[&#39;Name&#39;] for label in response[&#39;CelebrityFaces&#39;]]
+csv_labels = &quot;, &quot;.join(all_labels + all_celebrities)</code></pre>
+<h3 id="lambda-関数のコード修正">Lambda 関数のコード修正</h3>
+<p>以下の2パターンで修正できます。</p>
+<ul>
+<li>マネージメントコーンソール内のコードエディタで直接更新</li>
+<li>Cloud9 上でコードを修正して、デプロイ
+<ul>
+<li>Lab05 を参考にしてください</li>
+</ul></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>02-Cloud9</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">02-Cloud9</h1>
+</header>
+<h1 id="lab02-aws-cloud9-を利用して開発環境を準備する">Lab02: AWS Cloud9 を利用して開発環境を準備する</h1>
+<p>ここからは、サーバレスアーキテクチャのアプリケーションを構築していきます。</p>
+<p>最終的な成果物は以下のようなアプリケーションになります。</p>
+<ul>
+<li>HTML とJavaScript を利用したシングルページアプリケーション</li>
+<li>サーバサイド処理はLambda で作成、EC2 を利用しないサーバレスアーキテクチャ</li>
+<li>アプリケーションの機能
+<ul>
+<li>ユーザがアカウントを作成(サインアップ)してサインインできる</li>
+<li>サインインしたユーザは、画像ファイルをアプリケーションにアップロードできる</li>
+<li>アップロードした画像に何が写っているか解析しラベルを付与する</li>
+<li>自分がアップロードした画像を一覧で表示できる</li>
+</ul></li>
+</ul>
+<p>アーキテクチャは以下のようになります。</p>
+<p><img src="images/Lab01-AppOverview.jpg" /></p>
+<p>まずこのラボでは、統合開発環境であるAWS Cloud9 を起動して開発環境を準備します。<br />
+AWS Cloud9 は、クラウドベースのIDE（統合開発環境）であり、ブラウザ上でコードを書いたり、実行したり、デバッグすることができます。</p>
+<p><img src="images/Lab02-Architecture.png" /></p>
+<hr />
+<h2 id="cloud9-の起動と確認">Cloud9 の起動と確認</h2>
+<p>AWS Cloud9 で開発環境を作成します。</p>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> から、<strong>開発者用ツール</strong> カテゴリにある <strong>Cloud9</strong> を選択します。</p></li>
+<li><p><strong>リージョン</strong> を <strong>オレゴン</strong>に変更します。以後、すべての操作は <strong>オレゴン</strong> リージョンで操作します。</p></li>
+<li><p><strong>Create environment</strong> ボタンをクリックします。</p></li>
+<li><p><strong>Name environment</strong> 画面で、<strong>Name</strong> に “DevAWSomeDay” と入力します。</p></li>
+<li><p>画面右下の<strong>Next step</strong> ボタンをクリックします。</p></li>
+<li><p><strong>Configure settings</strong> 画面では、何も変更せずに画面右下の <strong>Next step</strong> ボタンをクリックします。</p></li>
+<li><p><strong>Review</strong> 画面で、画面右下の <strong>Create environment</strong> ボタンをクリックします。</p></li>
+<li><p><strong>AWS Cloud9</strong> の統合開発環境がブラウザ上に表示されます。<strong>We are creating your AWS Cloud9 environment. This can take a few minutes.</strong> と表示され起動完了するまでに <strong>数分</strong> かかります。</p>
+<p><img src="images\Lab02-Cloud9-IDE.png" /></p>
+<details>
+<summary><strong>10 分以上 Cloud9 が上記の状態にならない場合（展開して手順を表示）</strong></summary>
+<p>
+<p>今回はCloud9 の実行環境として、無償で利用可能なt2.micro (vCPU:1、Memory 1GiB) を利用していますが、スペック不足により起動時にハングする場合があります。ハングした場合は以下の手順でCloud9 を実行しているEC2 インスタンスを再起動してください。</p>
+<ul>
+<li>マネージメントコンソールで サービス &gt; EC2 を表示します。
+<ul>
+<li>インスタンス一覧から“aws-cloud9-DevAWSomeDay-XXXX” を右クリックし、<strong>インスタンスの状態</strong> &gt; <strong>再起動</strong> を選択します。<br />
+</li>
+<li><strong>インスタンスの再起動</strong> ダイアログで <strong>再起動</strong> ボタンをクリックします。<br />
+</li>
+<li>Cloud9 画面に戻ります。再起動中は <strong>Connecting</strong> と表示されていますので、画面が元に戻るまで待ちます。<br />
+
+</p>
+</details></li>
+</ul></li>
+</ul></li>
+<li><p>Cloud9 はブラウザ上で利用できる統合開発環境(IDE)ですが、裏側ではEC2 インスタンスが起動し、その中で必要なプロセスが動いています。実際にEC2 インスタンスをマネージメントコンソールで確認してみましょう。<br />
+Cloud9 画面でマネージメントコンソールが見えなくなってしまっている場合は、ブラウザの別タブを開いて、以下のURLにアクセスしてください。</p>
+<p><a href="https://console.aws.amazon.com/ec2" class="uri">https://console.aws.amazon.com/ec2</a></p>
+<p>マネージメントコンソールから、<strong>サービス</strong> &gt; <strong>EC2</strong> を選択します。 画面左のナビゲーションペインで、<strong>インスタンス</strong> を選択します。<strong>Name</strong> 列が、“aws-cloud9-DevAWSomeDay-xxxxxxx” となっているインスタンスが、Cloud9 で利用されているインスタンスです。<br />
+なお、ブラウザを閉じるなどしてIDE へのアクセスがなくなり、デフォルトでは30分経つと、このインスタンスは自動的に停止状態( <strong>stopped</strong> )になります。IDE に再びアクセスすると、自動的にEC2 インスタンスが起動します。</p></li>
+</ol>
+<hr />
+<h2 id="アプリケーションファイルのダウンロード">アプリケーションファイルのダウンロード</h2>
+<p>次に、AWS上に構成していくアプリケーションをCloud9 にダウンロードします。</p>
+<ol type="1">
+<li><p>Cloud9 画面を表示してください。(もし <strong>Session Expired</strong> と表示されたら、Cloud9 上に表示される <strong>Login</strong> ボタンをクリックしてください。)</p></li>
+<li><p>Cloud9 画面の下側に <strong>bash - “ip-172-31”</strong> というタブが表示されており、以下のようなターミナルが表示されています。</p>
+<pre><code>DevAWSomeUser:~/environment $</code></pre></li>
+<li><p>このターミナル内で次のコマンドを実行します。コマンドの実行には、<strong>ctrl + c</strong> でコピーして、ターミナル上で<strong>ctrl + v</strong> で貼り付けてください。</p>
+<pre><code>wget http://awsj-tc-training-public.s3.amazonaws.com/2018%20Dev%20AWSome%20Day/contents/app/photoapp.zip</code></pre></li>
+<li><p>ダウンロードしたファイルを解凍します。</p>
+<pre><code>unzip photoapp.zip</code></pre></li>
+<li><p>解凍したディレクトリは以下のような構造になっています。</p>
+<pre><code>─photoapp
+  ├─dynamodb
+  ├─lambda
+  │  ├─imagelabels
+  │  └─photoapi
+  └─web
+      ├─public
+      ├─src
+      └─package.json</code></pre>
+<p>web ディレクトリ配下にはブラウザ側で動作するコードが格納されています。web には、ブラウザ上で動作させるクライアントサイドの React アプリケーションのコードが格納されています。lambda にはAWS Lambda 上で実行するサーバサイドのコードが格納されています。dynamodb には、後のラボで利用する DynamoDB テーブル作成用のテーブル定義が格納されています。</p></li>
+</ol>
+<hr />
+<h2 id="依存関係のあるモジュールのインストールとコードのテスト実行">依存関係のあるモジュールのインストールとコードのテスト実行</h2>
+<p>ダウンロードしたファイルには、最低限のコードしか含まれておらずこのままではまだ動作しません。</p>
+<ol type="1">
+<li><p>Cloud9 の画面に戻って、ターミナル上で以下のコードを実行し、yarn をインストールします。</p>
+<pre><code>npm install -g yarn
+</code></pre>
+<p>npm およびyarn はJavaScript 用のパッケージ管理ツールです。Cloud9 にはデフォルトでnpm がインストールされておりそのまま利用できます。yarn はnpm コマンドを利用してインストールすることができます。<br />
+以下のように表示されれば、正常にインストールされています。（バージョンは異なる場合があります）</p>
+<pre><code>/home/ec2-user/.nvm/versions/node/v6.15.1/bin/yarn -&gt; /home/ec2-user/.nvm/versions/node/v6.15.1/lib/node_modules/yarn/bin/yarn.js
+/home/ec2-user/.nvm/versions/node/v6.15.1/bin/yarnpkg -&gt; /home/ec2-user/.nvm/versions/node/v6.15.1/lib/node_modules/yarn/bin/yarn.js
+/home/ec2-user/.nvm/versions/node/v6.15.1/lib
+└── yarn@1.13.0</code></pre>
+<details>
+<summary><strong>コマンドが失敗した場合（展開して手順を表示）</strong></summary>
+<p>
+<p><code>npm install -g yarn</code> により外部のリポジトリからyarn パッケージをダウンロードしてきますが、場合によっては外部レポジトリが利用できない状況の場合があり、その場合は処理が失敗します。</p>
+<p>この場合は、代わりに以下のコマンドを実行してください。</p>
+<p><code>wget http://awsj-tc-training-public.s3.amazonaws.com/2018%20Dev%20AWSome%20Day/contents/app/yarn1.7.0-package.tgz</code> <code>npm install -g ./yarn1.7.0-package.tgz</code></p>
+</p>
+</details></li>
+<li><p>以下のコマンドを実行して必要なモジュールを構成します。(実行が終わるまで2分ほどかかります)</p>
+<pre><code>cd ~/environment/photoapp/web
+yarn install</code></pre>
+<p><code>yarn install</code> により、photoapp/web/package.json 内に記述されている依存関係のあるモジュールが自動的にダウンロードされます。<br />
+以下のように表示されればinstall 処理は正常に行われています。</p>
+<pre><code>info No lockfile found.
+[1/4] Resolving packages...
+…略…
+[4/4] Building fresh packages...
+success Saved lockfile.
+Done in 44.99s.</code></pre>
+<details>
+<summary><strong>コマンドが失敗した場合（展開して手順を表示）</strong></summary>
+<p>
+<p><code>yarn install</code> により依存関係のあるコンポーネントを外部のリポジトリからダウンロードしてきますが、場合によっては外部レポジトリが利用できない状況の場合があり、その場合は処理が失敗します。</p>
+<p>この場合は、代わりに以下のコマンドを実行してください。</p>
+<p><code>cd ~/environment/photoapp/web</code> <code>wget http://awsj-tc-training-public.s3.amazonaws.com/2018%20Dev%20AWSome%20Day/contents/app/node_modules.tar.gz</code> <code>tar -xzvf node_modules.tar.gz</code></p>
+</p>
+</details></li>
+<li><p>Cloud9 の画面左の <strong>Environment</strong> タグ内で、<strong>DevAWSomeday</strong> &gt; <strong>photoapp</strong> &gt; <strong>web</strong> まで展開し、<strong>package.json</strong> をクリックして中身を確認してみましょう。このファイルの <strong>dependencies</strong> 内に記述されているモジュールが自動的にダウンロードされて構成されます。この中で以下の2つのモジュールはAWS が提供しているJavaScript 用のSDK となります。</p>
+<pre><code>&quot;aws-amplify&quot;: &quot;1.1.19&quot;,
+&quot;aws-amplify-react&quot;: &quot;2.3.0&quot;,</code></pre></li>
+<li><p>必要なモジュールがそろったので、実際に動かしてみます。（まだアプリケーションのすべてが動くわけではありません。）<br />
+以下のコードをターミナル内で実行してください。</p>
+<pre><code>
+yarn start
+</code></pre>
+<p>Cloud9 のEC2上にテスト用のWeb サーバが起動します。以下のように表示されます。 （コンパイルのワーニングが発生していますが、現時点では無視してください。)</p>
+<pre><code>Compiled with warnings.
+
+./src/MyPhotos.js
+  Line 2:   &#39;Storage&#39; is defined but never used            no-unused-vars
+  Line 2:   &#39;API&#39; is defined but never used                no-unused-vars
+  Line 49:  &#39;photokey&#39; is assigned a value but never used  no-unused-vars
+
+./src/App.js
+  Line 4:  &#39;Authenticator&#39; is defined but never used      no-unused-vars
+  Line 4:  &#39;withAuthenticator&#39; is defined but never used  no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.</code></pre></li>
+<li><p>Cloud9 画面の上側の <strong>Preview</strong> から、<strong>Preview Running Application</strong> をクリックします。</p>
+<p><img src="images\Lab02-Cloud9-Preview-App.png" alt="Preview Running Appliacation" /><br />
+</p></li>
+<li><p>以下のようなWelcome画面が表示されます。</p>
+<p><img src="images\Lab02-App-Welcome.png" /></p></li>
+<li><p>さらに <strong>Preview</strong> 画面の右上の四角の中に矢印の入ったアイコンをクリックすると、ブラウザの新しいタブで画面をテストすることができます。</p>
+<p><img src="images\Lab02-App-Welcome2.png" /></p>
+<p>Chrome や Firefox を利用している場合は、キーボードの <strong>F12</strong> ボタンを押して、開発者ツールを表示してJavaScriptのデバッグをすることができます。(Safari の方は後述)</p>
+<p><img src="images\Lab02-Chrome-DevTool.png" /></p>
+<p>Mac でSafari を利用している場合は、メニューバーの <strong>開発</strong> メニューから <strong>JavaScriptコンソールを表示</strong> をクリックする（もしくは、キーボードで、<strong>option + command + C</strong> を押す）とJavaScript コンソールが開き、デバッグなどを行うことができます。<br />
+Safari で <strong>開発</strong> メニューがない場合は、<strong>Safari</strong> &gt; <strong>環境設定</strong> &gt; <strong>詳細</strong> 画面で、<strong>メニューバーに“開発”メニューを表示</strong> にチェックを入れてください。</p></li>
+</ol>
+<p>以上で、このラボは終了です。</p>
+</body>
+</html>

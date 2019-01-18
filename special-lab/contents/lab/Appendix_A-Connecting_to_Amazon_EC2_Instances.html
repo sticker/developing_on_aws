@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Appendix-Connecting-to-EC2</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+</head>
+<body>
+<header>
+<h1 class="title">Appendix-Connecting-to-EC2</h1>
+</header>
+<h1 id="appendix-ec2-へのssh-接続方法">Appendix: EC2 へのSSH 接続方法</h1>
+<h2 id="付録の概要">付録の概要</h2>
+<h2 id="はじめに">はじめに</h2>
+<p>この付録では、各OSからAmazonEC2インスタンスへSSH で接続する方法を説明します。<br />
+環境に合わせていずれか一つの方法を使用して下さい。</p>
+<ul>
+<li>A:Windows端末から接続（TeraTermを使用）</li>
+<li>B:Windows端末から接続（PuTTYを使用）</li>
+<li>C:Mac端末から接続</li>
+</ul>
+<h2 id="a-windows-端末から接続-tera-term"><strong>A: Windows 端末から接続 (Tera Term)</strong></h2>
+<p>Windows 端末から Tera Term を使用して SSH ログインする方法を記述しています。</p>
+<ol type="1">
+<li><p><strong>Tera Term</strong> がインストールされていない場合は、以下より入手してください。</p>
+<p>https://ttssh2.osdn.jp/</p></li>
+<li><p><strong>Tera Term</strong> を起動し、接続画面でホスト名として、接続先の EC2インスタンスの<strong>パブリック IP アドレス</strong>もしくは、<strong>DNS名</strong>を入力します。さらに、SSH のバージョンが <strong>SSH2</strong>になっていることを確認し [<strong>OK</strong>] をクリックします。</p>
+<p><img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_teraterm01.JPG" /></p></li>
+<li><p>セキュリティの警告が表示されたら、[<strong>続行</strong>] をクリックします。</p></li>
+<li><p>認証情報として以下のように指定し、[<strong>OK</strong>] をクリックします。</p>
+<ol type="1">
+<li>ユーザー名: <code>ec2-user</code></li>
+<li>RSA/DSA/ECDSA/ED25519鍵を使う: <code>選択</code></li>
+<li>[<strong>秘密鍵</strong>] をクリックし 秘密鍵ファイルの選択 画面を開きます<br />
+<img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_teraterm02.JPG" /></li>
+<li>EC2 インスタンス作成の際に指定したキーを選択します <br>※ キーが表示されていない場合は、表示する拡張子を <strong>秘密鍵ファイル</strong> から <strong>すべてのファイル</strong>　へ切り替えてください<br />
+<img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_teraterm03.JPG" /></li>
+</ol></li>
+<li><p>ターミナル画面が表示されます。</p></li>
+</ol>
+<p><strong>＜以上でTeraTermを使用した接続手順は終了です。元の手順に戻ってください＞</strong></p>
+<hr />
+<h2 id="b-windows-端末から接続-putty"><strong>B: Windows 端末から接続 (PuTTY)</strong></h2>
+<p>Windows 端末から PuTTY を使用して SSH ログインする方法を記述しています。</p>
+<ol type="1">
+<li><p><strong>Putty</strong> がインストールされていない場合は、以下より入手してください。</p>
+<p>https://www.putty.org/</p></li>
+<li><p><strong>PuTTY</strong> を起動します。</p></li>
+<li><p>[<strong>Host Name (or IP address)</strong>] に、接続先の EC2インスタンスの<strong>パブリック IP</strong> アドレスもしくは、<strong>DNS名</strong>を入力します。<br />
+<img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_putty01.JPG" /></p></li>
+<li><p>[<strong>Category</strong>] で [<strong>Connection type</strong>] の [<strong>SSH</strong>] を展開します。</p></li>
+<li><p>[<strong>Auth</strong>] をクリックします。</p></li>
+<li><p><strong>[Private key file for authentication]</strong> に EC2インスタンス作成時に指定したキー (<strong>.ppk</strong>) ファイルを参照して、[<strong>Open</strong>] をクリックします。<br />
+<img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_putty02.JPG" /> &gt; ※ ダウンロードした秘密鍵が PEM 形式 (.pem) の場合は、PuTTYgen を使用して以下の手順で PPK 形式(.ppk) へ変換してください。</p>
+<ul>
+<li><strong>PuTTYgen</strong> を起動します。<br />
+<img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_puttygen01.JPG" /><br />
+起動済みの場合は、タスクトレイに常駐しています。このような <img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_puttygen00.JPG" /> アイコンを見つけます</li>
+<li><strong>Load</strong> をクリックします</li>
+<li>キーを保存したフォルダを開き、表示するファイル拡張子を <strong>All Files(すべてのファイル)</strong> とします。<br />
+ダウンロードした<code>.pem</code>形式のファイルを選択します<br />
+<img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_puttygen02.JPG" /></li>
+<li><strong>Save private key</strong> を選択します。パスフレーズなしでキーを保存するか警告が出る場合は <strong>はい</strong> を選択します<br />
+<img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_puttygen03.JPG" /></li>
+<li>任意のファイル名で <code>.ppk</code> のファイル形式でキーを保存します<br />
+<img src="http://awsj-tc-training-public.s3.amazonaws.com/AWS%20Technical%20Essentials/Technical_Essentials_v2.1_LG/media/Appendix_A/appendixA_puttygen05.JPG" /></li>
+</ul></li>
+<li><p>[<strong>PuTTY Security Alert</strong>] ダイアログボックスが開くので [<strong>Yes</strong>] をクリックしてキーを <strong>PuTTY</strong> のキャッシュに追加します。</p></li>
+<li><p>[<strong>login as:</strong>] に「<strong>ec2-user</strong>」と入力して、<strong>Enter</strong> キーを押します。</p></li>
+<li><p>ターミナル画面が表示されます。</p></li>
+</ol>
+<p><strong>＜以上でPuTTYを使用した接続手順は終了です。元の手順に戻ってください＞</strong></p>
+<hr />
+<h2 id="c-mac-端末から接続"><strong>C: Mac 端末から接続</strong></h2>
+<p>Mac 端末から SSH ログインする方法を記述しています。</p>
+<ol type="1">
+<li><p>ターミナルアプリケーションを開きます。</p></li>
+<li><p>chmodコマンドでPEMファイルのパーミッションをオーナーのみ読み込み専用に変更します。<br />
+以下のコマンドでは <code>~/Downloads/mykey.pem</code> をダウンロードしたPEMファイルのパスに置き換えて実行してください。</p>
+<pre><code>chmod 400 ~/Downloads/mykey.pem</code></pre></li>
+<li><p>sshコマンドでインスタンスにログインします。<br />
+「パブリックIPアドレス」をインスタンスのパブリックIPアドレスに置き換えて実行してください。</p>
+<pre><code>ssh -i ~/Downloads/mykey.pem ec2-user@パブリックIPアドレス</code></pre></li>
+</ol>
+<p><strong>＜以上でMacを使用した接続手順は終了です。元の手順に戻ってください＞</strong></p>
+</body>
+</html>

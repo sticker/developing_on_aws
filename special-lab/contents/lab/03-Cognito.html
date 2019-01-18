@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>03-Cognito</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">03-Cognito</h1>
+</header>
+<h1 id="lab03-amazon-cognito-を構成してアプリケーションに認証と認可の仕組みを組み込む">Lab03: Amazon Cognito を構成してアプリケーションに認証と認可の仕組みを組み込む</h1>
+<p>このラボでは、Amazon Cognito を利用して、アプリケーションに認証・認可の仕組みを組み込みます。</p>
+<p><img src="images/Lab03-Architecture.png" /></p>
+<p>Amazon Cognito は、シンプルで安全なユーザーサインアップ、サインイン、およびアクセス制御の機能をウェブアプリケーションやモバイルアプリケーションに素早く簡単に追加することができるサービスです。<br />
+今回は、Cognito を利用して、アプリケーションに認証と認可（＝アクセス制御）の仕組みを組み込みます。</p>
+<p>AWS Congito には、大きく３つの機能があります。</p>
+<ul>
+<li>Amazon Cognito ユーザープール
+<ul>
+<li>ユーザを管理するユーザディレクトリを作成し、アプリケーションにサインイン・サインアップを機能（＝認証機能）を追加できます。また、認証のための基盤を自前で用意する必要がありません。</li>
+</ul></li>
+<li>Amazon Cognito フェデレーテッドアイデンティティ
+<ul>
+<li>ID プロバイダー(IdP) と連携し、アプリケーションへAWSへの一時的認証情報を払い出すことができます。アプリケーションはこの一時的認証情報を利用して、AWS の各種サービスにアクセスできます。（＝認可機能）</li>
+<li>ID プロバイダとして、上記のCognito ユーザープール 以外に、Amazon/Facebook/Google といったパブリックプロバイダーなども利用することもできます。</li>
+</ul></li>
+<li>Amazon Cognito Sync
+<ul>
+<li>モバイルアプリケーションなどで、デバイス上のデータとCogntino 間でユーザデータの同期ができます。例えば、電波状況が悪くオフラインのデバイスと、電波状況が改善してオンラインになったらデータを同期したり、もしくは複数デバイス間でデータを同期する場合に利用できます。（※Amazon Cognito Sync を初めて使用する場合は、<a href="https://aws.amazon.com//appsync/">AWS AppSync</a> を使用してください。AWS AppSync は、Amazon Cognito Sync のように、デバイス間でアプリケーションデータを同期するための新しいサービスです。）</li>
+</ul></li>
+</ul>
+<p>このラボでは、ユーザプールとフェデレーテッドアイデンティティ 機能を利用してアプリケーションに認証と認可の仕組みを追加します。</p>
+<hr />
+<h2 id="amazon-cognito-の構成">Amazon Cognito の構成</h2>
+<h4 id="amazon-cognito-のユーザープールの構成">Amazon Cognito のユーザープールの構成</h4>
+<p>Cognito ユーザープールを構成すると、アプリケーションのユーザを管理し、アプリケーションにサインアップとサインインの機能を追加できます。ユーザプールは何百万人ものユーザまで拡張でき、開発者にとってシンプル、安全、そして低コストに利用できるように設計されています。</p>
+<ol type="1">
+<li><p>マネージメントコンソールを表示します。リージョンが <strong>オレゴン</strong> であることを確認し、<strong>サービス</strong> から <strong>Cognito</strong> を選択します。Cognito は、<strong>セキュリティ、アイデンティティ、コンプライアンス</strong> カテゴリにあります。見つからない場合は、検索フィールドに <strong>Cognito</strong> と入れてください。</p></li>
+<li><p><strong>Amazon Cognito</strong> のトップ画面が表示されたら、<strong>ユーザープールの管理</strong> をクリックします。</p></li>
+<li><p>画面右上の <strong>ユーザープールを作成する</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ユーザープールにどのような名前を付けますか？</strong> 画面で、<strong>プール名</strong> に、“devawsome-user-pool” と入力します。</p></li>
+<li><p><strong>デフォルトを確認する</strong> ボタンをクリックします。</p>
+<p><img src="images/Lab03-UsePool-Create.png" /></p></li>
+<li><p><strong>確認</strong> 画面で、画面下の <strong>プールの作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ユーザープールは正常に作成されました。</strong> が表示されます。</p></li>
+<li><p>この画面の <strong>プールID</strong> をコピーして、テキストファイルなどにコピーして控えておきます。後で利用します。</p>
+<p><img src="images/Lab03-UserPool-PoolID.png" /></p></li>
+<li><p>画面左側のナビゲーションペインで、<strong>全般設定</strong> カテゴリの、<strong>アプリクライアント</strong> をクリックします。</p>
+<p><img src="images/Lab03-UserPool-AppClient.png" /></p></li>
+<li><p>右側に表示された画面の <strong>アプリクライアントの追加</strong> リンクをクリックします。</p></li>
+<li><p><strong>このユーザープールへのアクセス権限があるアプリクライアントはどれですか?</strong> 画面で、<strong>アプリクライアント名</strong> に “MyPhotoApp” と入力します。</p></li>
+<li><p><strong>クライアントシークレットを生成</strong> のチェックを外します。今回は、Webベースのアプリケーションを作成しますが、Webベースアプリケーションでは、クライアントシークレットはサポートしていません。</p>
+<p><img src="images\Lab03-UserPool-ClientApp.png" /></p></li>
+<li><p><strong>アプリクライアントの作成</strong> をクリックします。</p></li>
+<li><p>次の画面で、<strong>アプリクライアントID</strong> が表示されますので、この値をテキストファイルなどにコピーして控えておきます。ユーザプールの設定は以上で終了です。</p></li>
+</ol>
+<h4 id="amazon-cognito-フェデレーテッドアイデンティティの構成">Amazon Cognito フェデレーテッドアイデンティティの構成</h4>
+<p>フェデレーテッドアイデンティティを構成することで、認証を受けたユーザに対して、AWS に対してどのような操作が可能かのアクセス制御機能(=一般に認可と呼ばれます) を追加します。アクセスコントロールには、IAM ロールが利用されます。</p>
+<ol type="1">
+<li><p>マネージメントコンソールの 上側の ユーザプールの横にある <strong>フェデレーティッドアイデンティティ</strong> をクリックします。</p>
+<p><img src="images\Lab03-FederatedLink.png" /></p></li>
+<li><p><strong>使用開始ウィザード</strong> 画面が表示されます。(表示されない場合は、<strong>新しいIDプールの作成</strong> ボタンを押して下さい。)</p></li>
+<li><p><strong>使用開始ウィザード</strong> にて、<strong>IDプール名</strong> に “DevAWSomeIDPool” と入力し、画面下側の <strong>認証プロバイダー</strong> をクリックして展開します。</p></li>
+<li><p><strong>認証プロバイダー</strong> の <strong>Cognito</strong> タブにて、<strong>ユーザプールID</strong> と <strong>アプリクライアントID</strong> に先ほど控えておいた値を入力します。</p>
+<p><img src="images\Lab03-IDPool-Cognito.png" /></p></li>
+<li><p>画面右下の <strong>プールの作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>Your Cognito identities require access to your resources</strong> 画面が表示されたら、<strong>詳細を表示</strong> をクリックします。以下のようなロールの情報が表示されます。</p>
+<p><img src="images\Lab03-IDpool-roles.png" /></p>
+<p>ここで作成されるIAM ロールは、Cognito ユーザプールで認証を受けたユーザが引き受けることができるロールになります。Cognito から、このIAM ロールの権限を持つ一時的な認証情報が払い出され、アプリケーション内のコードでから各種AWSのサービスにアクセスができるようになります。IAM ロールが２つ定義されていますが、上側は認証済みのアカウントに適用できるIAM ロールで、下側は認証受けていないユーザに適用できるIAM ロールです。認証を受けていないユーザのIAM ロールは、例えばアプリケーションのゲストユーザに対して権限を与えるのに利用できます。</p></li>
+<li><p>今回は特に何も設定せずに、右下の <strong>許可</strong> ボタンをクリックします。IAM ロールの内容は後で書き換えます。</p></li>
+<li><p><strong>Amazon Congito での作業開始</strong> 画面が表示されます。画面右上の <strong>ID プールの編集</strong> リンクをクリックします。</p></li>
+<li><p><strong>ID プールの編集</strong> 画面で、<strong>ID プールのID</strong> をコピーして、テキストファイルに控えておきます。次のような内容になります。</p>
+<p><img src="images\Lab03-IDPool-ID.png" /></p>
+<pre><code>例: us-west-2:24687639-1ec1-40c6-a1e3-abcdefgh</code></pre>
+<p>マネジメントコンソールの作業はここで一旦終了です。</p></li>
+</ol>
+<h2 id="アプリケーションに認証の仕組みを組み込む">アプリケーションに認証の仕組みを組み込む</h2>
+<p>先ほど作成したユーザプールを利用して、アプリケーションにサインアップ／サインイン機能を追加して動かしてみます。</p>
+<ol type="1">
+<li><p>Cloud9 画面の、左側の <strong>Environment</strong> にて、<strong>photoapp</strong> &gt; <strong>web</strong> &gt; <strong>src</strong> まで展開し、<strong>config.js</strong> ファイルをクリックして表示します。</p></li>
+<li><p><strong>config.js</strong> ファイルの、<strong>identityPoolId</strong> と <strong>userPoolId</strong> および <strong>userPoolWebClientId</strong> に先ほど控えておいた、<strong>ID プールのID</strong>、 <strong>プールID</strong> および <strong>アプリクライアントID</strong> を設定し <strong>ctrl + s</strong> でファイルを保存します。以下のようになります。（設定例であり、実際の値は異なります。）</p>
+<pre><code>…前略…
+
+Auth: {
+    identityPoolId: &#39;us-west-2:24687639-1ec1-40c6-a1e3-bfd1ece81e5f&#39;,
+    region: &#39;us-west-2&#39;,
+    userPoolId: &#39;us-west-2_6v0eq5XGy&#39;,
+    userPoolWebClientId: &#39;3sj9jbkeqfbq3h4nrllvnsbass&#39;
+},
+
+…後略…</code></pre></li>
+<li><p>次に、<strong>photoapp</strong> &gt; <strong>web</strong> &gt; <strong>src</strong> の <strong>App.js</strong> ファイルを開きます。</p></li>
+<li><p><strong>Task: Authentication 1</strong> とコメントアウトされている部分のコメント(<code>{/* */}</code> 中括弧も含む)を取り除きます。(Auchenticator まで削除しないようにしてください。)</p>
+<pre><code>修正前：
+
+&lt;div className=&quot;container&quot;&gt;
+  {/* Task: Auhentication 1
+  &lt;Authenticator&gt;
+  */}
+    &lt;MyPhotos /&gt;
+  {/* Task: Auhentication 1
+  &lt;/Authenticator&gt;
+  */}
+&lt;/div&gt;</code></pre>
+<pre><code>修正後：
+
+&lt;div className=&quot;container&quot;&gt;
+  &lt;Authenticator&gt;
+    &lt;MyPhotos /&gt;
+  &lt;/Authenticator&gt;
+&lt;/div&gt;</code></pre></li>
+<li><p><strong>App.js</strong> を <strong>ctrl + s</strong> で保存します。</p></li>
+<li><p>画面下のターミナルにて、<code>yarn start</code> が実行中であることを確認してください。実行していない場合は、再度<code>yarn start</code> でテストサーバを起動します。</p></li>
+<li><p><strong>Preview</strong> &gt; <strong>Preview Runing Application</strong> をクリックしてアプリのプレビュー画面を表示します。前のモジュールと同様にプレビュー画面の右上の矢印ボタンをクリックして、ブラウザの別タブでプレビュー画面を表示します。</p></li>
+<li><p>以下のような、 <strong>Sign in to your account</strong> 画面が表示されるようになります。</p>
+<p><img src="images/Lab03-Signin-view.png" /></p></li>
+<li><p><strong>Username</strong> と <strong>Password</strong> に適当な文字を入力して、<strong>SIGN IN</strong> ボタンをクリックしてください。以下メッセージが表示されれば正常に設定できています。(まだアプリでアカウントは作っていないので、ユーザは存在していませんが、Cognito のユーザプールで処理が行われています。)</p>
+<pre><code>User does not exist</code></pre>
+<em>※ Note</em> 上記手順で、もし <code>Unable to verify secret hash for client lthhrtggteiktlikXXXXXX</code> のようなメッセージが表示された場合は設定が誤っている可能性があります。以下の手順を展開して確認してください。
+<details>
+<summary><strong>確認手順(展開して詳細を表示)</strong></summary>
+<p>
+<p><code>Unable to verify secret hash for client lthhrtggteiktlikXXXXXX</code> が表示された場合は、以下の手順を実施してください。<br />
+ユーザプール <code>devawsome-user-pool</code> でアプリクライアントを選択肢、<code>MyPhotoApp</code> の <strong>詳細を表示</strong> をクリックしてください。<br />
+以下のように、<strong>アプリクライアントのシークレット</strong> に文字列が表示されている場合は、アプリクライアント作成時に <strong>クライアントシークレットを生成</strong> にチェックを入れたまま作成しています。</p>
+<p><img src="images/Lab03-AppSecret.png" /></p>
+<p>この場合は、アプリクライアントを再作成する必要があります。画面右側の× 印を押してください。</p>
+<p><img src="images/Lab03-AppSecret-2.png" /></p>
+<p><strong>アプリクライアントを削除しますか？</strong> をクリックして削除します。 再度 <code>MyPhotoApp</code> という名称で、アプリクライアントを作成してください。その際に <strong>クライアントシークレットを生成</strong> のチェックを必ず外してください。</p>
+<p>作成された <strong>アプリクライアントID</strong> をコピーして控えておいてください。</p>
+<p>この <strong>アプリクライアントID</strong> を IDプール に設定しなおします。</p>
+<ul>
+<li><strong>フェデレーテッドアイデンティティ</strong> から、先ほど作成した <strong>DevAWSomeIDPool</strong> を選択します。
+<ul>
+<li>画面右上の <strong>IDプールの編集</strong> をクリックし、次の画面で <strong>認証プロバイダー</strong> をクリックして展開します。</li>
+<li><strong>アプリクライアントID</strong> の右側の <strong>Unlock</strong> ボタンをクリックして、作り直したアプリクライアントID を入力します。</li>
+<li>画面右下の <strong>変更の保存</strong> をクリックします。</li>
+</ul>
+<p>次に、アプリケーションの <strong>config.js</strong> の <strong>userPoolWebClientId</strong> 部分を作り直したアプリクライアントID で書き換えます。<br />
+再度アプリにアクセスして、適当なUser/Password でSingin して <code>User does not exist</code> が表示されることを確認してください。</p>
+以上が、<code>User does not exist</code>が表示されなかった場合の対処方法となります。
+</p>
+</details></li>
+</ul></li>
+<li><p>実際にアカウントを作成してみましょう。画面左下の <strong>Create account</strong> リンクをクリックしてください。</p></li>
+<li><strong>Create a new account</strong> 画面で、<strong>Username</strong>、<strong>Password</strong> にはお好きなものを設定してください。<strong>Email</strong> には、この場で受信できるメールアドレスを入力してください。<strong>Phone Number</strong> には適当な数字(‘123456789’)を入力してください。入力には、以下の点にご注意ください。
+<ul>
+<li><strong>Password</strong> には、英字大文字, 英字小文字, 特殊文字(@ や ! など), 数字を入れる必要があります。</li>
+<li><strong>Email</strong> には、この場で受信可能なアドレスが必要となります。もし、受信可能なアドレスをお持ちではない方は、例えば<a href="https://dropmail.me/ja/">このようなサービス</a> を利用してワンタイムメールアドレスを利用することも可能です。</li>
+</ul></li>
+<li><p><strong>CREATE ACCOUNT</strong> ボタンをクリックします。</p></li>
+<li><p>次に、<strong>Confirm Sign Up</strong> 画面が表示されます。先ほど入力したメールアドレスに、6桁の <strong>Verification Code</strong> が送信されますので、そのコードを画面の <strong>Confirmation Code</strong> に入力します。</p></li>
+<li><p><strong>CONFIRM</strong> ボタンをクリックします。これでアカウントの作成は、完了です。再度 <strong>Sign in Account</strong> 画面が表示されますので、<strong>Username</strong> と <strong>Password</strong> に先ほど設定した値を入力して、<strong>SIGN IN</strong> ボタンをクリックします。</p></li>
+<li><p>次のような画面に遷移すれば正常に動作しています。右上に、ログイン中のユーザ名が表示されます。</p>
+<p><img src="images\Lab03-SingedIn-view.png" /></p>
+<p>以上で、アプリケーションの動作確認は終了です。</p></li>
+</ol>
+<hr />
+<h2 id="コードの解説">コードの解説</h2>
+<p><strong>注</strong> ここから先は、コードの解説をしています。ラボの進行には関係しませんので、ここを飛ばして次のラボに進むこともできます。</p>
+<p>このラボのアプリケーションは、HTML とJavaScript で構成されていますが、画面描画制御には、React というJavaScript フレームワークを利用しています。React は画面の描画に特化したフレームワークで、Facebook が開発したフレームワークですが、現在はOSS として公開されています。<br />
+React は、いわゆるシングルページアプリケーションやモバイルアプリケーションの開発に利用でき、高速なレンダリング処理が特徴です。<br />
+現在は、ブラウザ上で動作するWebアプリケーションだけではなく、Android やiOS のアプリケーションに利用できる、React Native も提供されています。</p>
+<p>このラボでは、もともと<code>&lt;MyPhotos&gt;</code> というReact コンポーネントが画面上に表示されていました。このアプリケーションに対して、以下のように <code>&lt;Authenticator&gt;</code> を追記して、MyPhotos を子要素に定義しました。これだけで、アプリケーションにサインイン／サインアップの仕組みを組み込むことができました。</p>
+<pre><code>&lt;Authenticator&gt;
+  &lt;MyPhotos /&gt;
+&lt;/Authenticator&gt;</code></pre>
+<p>AWS では、AWS サービスをプログラミング言語から利用しやすくするための SDK（Software Development Kit） を提供しています。</p>
+<blockquote>
+<p>(参考) <a href="https://aws.amazon.com/jp/tools/#sdk">AWS SDKs</a></p>
+<p>JavaScript 用のSDK の一つとして、ウェブまたはモバイルプラットフォームでクラウド接続アプリケーションを構築する開発者向けの開発ツールとして、<strong>AWS Amplify</strong> を提供しています。</p>
+</blockquote>
+<blockquote>
+<p>AWS Amplify に関しては、以下のドキュメント を参考にしてください。<br />
+<a href="https://aws-amplify.github.io/">AWS Amplify</a><br />
+<a href="https://aws-amplify.github.io/docs/js/start">AWS Amplify Getting Started</a></p>
+</blockquote>
+<p>コード内でAmplify を利用する場合は、まず、<code>Amplify.configure()</code> で設定をします。 今回のアプリケーションでは、<strong>App.js</strong> 内の最初に記述されています。</p>
+<pre><code>import Amplify from &#39;aws-amplify&#39;;
+import { Authenticator } from &#39;aws-amplify-react&#39;;
+import { amplify_config } from &#39;./config&#39;
+
+Amplify.configure(amplify_config);</code></pre>
+<p>設定情報は、<strong>config.js</strong> 内に記載しています。設定する内容は、Amplify で利用するモジュールによって異なります。今回のアプリケーションでは、<strong>Auth</strong>、<strong>API</strong> および、<strong>Strorage</strong> モジュールを利用するため、それぞれの設定を記述しています。（ここまでの手順では、<strong>Auth</strong> の設定のみが実施されている状況です。）</p>
+<pre><code>Auth: {
+    identityPoolId: &#39;us-west-2:ffa58e4e-f1f9-4eef-9187-e0ca1234567&#39;,
+    region: &#39;us-west-2&#39;,
+    userPoolId: &#39;us-west-2_2ROe123456&#39;,
+    userPoolWebClientId: &#39;h21stsu5su3mi91234567&#39;
+},
+API: {
+    endpoints: [{
+        name: &#39;DevAWSomeDayAPI&#39;,
+        endpoint: &#39;https://xxxxxxxxx.execute-api.us-west-2.amazonaws.com/prod&#39;,
+        region: &#39;us-west-2&#39;
+    }]
+},
+Storage: {
+    bucket: &#39;devawsome-photo-xxxxx&#39;,
+    region: &#39;us-west-2&#39;
+}</code></pre>
+<p>今回利用した、<strong>&lt;Authenticator&gt;</strong> は、AWS Amplify のライブラリの一つで、ユーザのサインイン／サインアップ処理および画面をReact コンポーネントとして提供しています。 このラボで実施したように、<code>&lt;Authenticator&gt;</code> を追加するだけで、アプリケーションにサインイン/サインアップ処理を追加できます。 今回は組み込みのUI を利用しましたが、<strong>AWS Amplify</strong> の <strong>Auth</strong> モジュールを利用して、カスタムのサインイン／サインアップ画面を作成することもできます。</p>
+<blockquote>
+<p>AWS Amplify Authenticator モジュールに関しては、以下のドキュメントを参考にしてください。<br />
+<a href="https://aws-amplify.github.io/docs/js/authentication">AWS Amplify Authentication</a></p>
+</blockquote>
+<p><strong>&lt;Auhtenticator&gt;</strong> で認証された情報は、子要素の <strong>&lt;MyPhotos&gt;</strong> に渡されます。<strong>web/src/MyPhotos.js</strong> を開いてください。 <strong>MyPhotos</strong> クラスでは、<code>this.props.authState</code> や <code>this.props.authData</code> といったプロパティで認証情報を受け取ることができます。<br />
+例えば、<code>this.props.authState</code> には認証ステータス(サインイン済みか否かなど)を表しており、この値のより表示するコンポーネントを切り替えることができます。</p>
+<pre><code>render() {
+    if (!this.props.authState) {
+        return (
+            &lt;div className=&quot;jumbotron&quot; &gt;
+            &lt;h2&gt;Welcome to My Photo App. &lt;br&gt;&lt;/br&gt;Let&#39;s develop this application.&lt;/h2&gt;
+            &lt;/div&gt;
+        );
+    }
+    else if (this.props.authState === &quot;signedIn&quot;) {
+        return (
+            &lt;div className=&quot;jumbotron&quot; &gt;
+                &lt;MyPhotoUpload authData={this.props.authData} authState={this.props.authState} /&gt;
+                &lt;MyPhotoList authData={this.props.authData} authState={this.props.authState} /&gt;
+            &lt;/div&gt;
+        );
+    }
+    else {
+        return (
+            &lt;div&gt;&lt;/div&gt;
+        );
+    }
+}</code></pre>
+<p><code>this.props.authData</code> には、認証者の情報が確認されています。例えば、以下のようにユーザ名を取得することができます。</p>
+<pre><code>let username;
+if (this.props.authState === &#39;signedIn&#39;) {
+    username = this.props.authData.username;
+}</code></pre>
+<p>以上で、このラボは終了です。</p>
+</body>
+</html>

@@ -1,0 +1,40 @@
+@media print {
+  * { background: transparent !important; color: black !important; text-shadow: none !important; filter:none !important; -ms-filter: none !important; }
+  @page { margin: 0.5cm; }
+
+  footer {
+    display:none;
+  }
+  navbar, .nav {
+    display:none;
+  }
+  .caret {
+    display:none;
+  }
+  #print {
+    display:none;
+  }
+  #print-header {
+    display:block;
+  }
+  .featurette-heading {
+    display:none;
+  }
+  .selectpicker {
+    border:none !important;
+  }
+  .lead {
+    display:none;
+  }
+  .container {
+    margin-top:-50px;
+  }
+  h2 {
+    font-size:19px;
+    font-weight:bold;
+  }
+  table {
+    margin-top:50px;
+  }
+
+}

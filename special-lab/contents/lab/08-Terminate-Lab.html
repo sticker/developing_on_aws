@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>08-Terminate-Lab</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">08-Terminate-Lab</h1>
+</header>
+<h1 id="lab08-ラボ終了処理">Lab08: ラボ終了処理</h1>
+<p>この実施は任意です。本日作成したアプリを残しておきたい方は、実施不要です。</p>
+<p>すべて削除したい場合は、以下の手順を実施してください。</p>
+<hr />
+<h2 id="ラボ終了処理">ラボ終了処理</h2>
+<h3 id="s3-バケットの削除">S3 バケットの削除</h3>
+<p>以下のバケットを削除します。</p>
+<ul>
+<li>devawsome-deploy-&lt;yourname&gt;</li>
+<li>devawsome-photo-&lt;yourname&gt;</li>
+<li>devawsome-publish-&lt;yourname&gt;</li>
+</ul>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>S3</strong> を選択します。対象となるバケットを選択して、<strong>バケットを削除する</strong> ボタンをクリックしてください。(<strong>バケット名</strong> のリンクをクリックするとバケットの詳細画面に遷移するので、リンク部分以外をクリックして選択してください)</p></li>
+<li><p><strong>バケットを削除する</strong> ダイアログで、<strong>バケット名を入力する</strong> に削除対象のバケット名を入力して <strong>確認</strong> ボタンをクリックします。</p></li>
+</ol>
+<h3 id="cloudformation-stack-の削除">CloudFormation Stack の削除</h3>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>CloudFormation</strong> を選択します。</p></li>
+<li><p><strong>スタックの名前</strong> が <strong>DevAWSomePhotoAPIStack</strong> のものを選択し、<strong>アクション</strong> &gt; <strong>スタックの削除</strong> をクリックします。</p></li>
+<li><p><strong>スタックの削除</strong> 画面で、<strong>はい、削除する</strong> をクリックします。</p></li>
+<li><p><strong>状況</strong> が <strong>DELETE_IN_PROGRESS</strong> に変わります。右上の更新ボタン(矢印が丸まったアイコン) をクリックして状況が変化したか確認できます。削除が完了すると行が無くなります。</p>
+<p>スタックを削除すると、スタックに含まれるすべてのリソースが削除されます。</p></li>
+</ol>
+<h3 id="cognito-のid-プールの削除">Cognito のID プールの削除</h3>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>Cognito</strong> を選択します。</p></li>
+<li><p><strong>ID プールの管理</strong> ボタンをクリックします。</p></li>
+<li><p><strong>DevAWSomeIDPool</strong> をクリックします。</p></li>
+<li><p>右上の <strong>ID プールの編集</strong> をクリックします。</p></li>
+<li><p>画面左下の <strong>IDプールの削除</strong> をクリックします。</p>
+<p><img src="images/Lab08-IDPool-Terminate.png" /></p></li>
+<li><p><strong>IDプールの削除</strong> ボタンが表示さるので、クリックします。</p></li>
+<li><p><strong>IDプールの削除</strong> 画面で、<strong>プールの削除</strong> ボタンをクリックします。</p></li>
+</ol>
+<h3 id="cognito-のユーザープールの削除">Cognito のユーザープールの削除</h3>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>Cognito</strong> を選択します。</p></li>
+<li><p><strong>ユーザプールの管理</strong> ボタンをクリックします。</p></li>
+<li><p><strong>devawsome-user-pool</strong> をクリックします。</p></li>
+<li><p>画面右上の <strong>プールの削除</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ユーザプールの削除</strong> 画面で <strong>delete</strong> と入力して <strong>プールの削除</strong> ボタンをクリックします。</p></li>
+</ol>
+<h3 id="lambda-関数の削除">Lambda 関数の削除</h3>
+<ol type="1">
+<li><p><strong>サービス</strong> &gt; <strong>Lambda</strong> をクリックします。<br />
+<strong>Cognito</strong> の <strong>ユーザプール</strong> を削除した直後の画面には、<strong>サービス</strong> メニューが表示されていないので、画面左上の <strong>AWS</strong> アイコンをクリックして、マネージメントコンソールのトップ画面に遷移してから操作してください。</p></li>
+<li><p><strong>DevAWSomeImageLambda</strong> の左側にチェックを入れて、<strong>アクション</strong> &gt; <strong>削除</strong> をクリックします。</p></li>
+<li><p><strong>DevAWSomeImageLambda 関数を削除</strong> 画面で、<strong>削除</strong> ボタンをクリックします。</p></li>
+</ol>
+<h3 id="dynamodb-の削除">DynamoDB の削除</h3>
+<ol type="1">
+<li><p><strong>サービス</strong> &gt; <strong>DynamoDB</strong> をクリックします。</p></li>
+<li><p>左側のナビゲーションペインで、<strong>テーブル</strong> をクリックします。</p></li>
+<li><p><strong>devawsome-photos</strong> を選択して、<strong>テーブルの削除</strong> ボタンをクリックします。</p></li>
+<li><p><strong>テーブルの削除</strong> 画面で、デフォルトのまま、<strong>削除</strong> ボタンをクリックします。</p></li>
+</ol>
+<h3 id="iam-ロールの削除">IAM ロールの削除</h3>
+<ol type="1">
+<li><p><strong>サービス</strong> &gt; <strong>IAM</strong> をクリックします。</p></li>
+<li><p>左側のナビゲーションペインで、<strong>ロール</strong> をクリックします。</p></li>
+<li><p>以下の <strong>ロール名</strong> の左のチェックボックスにチェックを入れて、<strong>ロールの削除</strong> ボタンをクリックします。</p>
+<ul>
+<li>Cognito_DevAWSomeIDPoolAuth_Role</li>
+<li>Cognito_DevAWSomeIDPoolUnauth_Role</li>
+<li>DevAWSome-ImageLabelRole</li>
+</ul></li>
+<li><p><strong>ロールの削除</strong> 画面で、<strong>はい、削除します</strong> ボタンをクリックします。（押せるようになるまで数秒かかります。)</p></li>
+</ol>
+<h3 id="cloudwatch-logs-の削除">CloudWatch Logs の削除</h3>
+<ol type="1">
+<li><p><strong>サービス</strong> &gt; <strong>CloudWatch</strong> をクリックします。</p></li>
+<li><p>ナビゲーションペインで、<strong>ログ</strong> をクリックします。</p></li>
+<li><p>以下のロググループを削除します。</p>
+<ul>
+<li>/aws/lambda/DevAWSomeImageLambda</li>
+<li>/aws/lambda/cloud9-photoapi-DevAWSomePhotoList-XXXXXXX</li>
+</ul></li>
+<li><p>ロググループにチェックを入れて、<strong>アクション</strong> &gt; <strong>ロググループの削除</strong> をクリックします。</p></li>
+<li><p><strong>ロググループの削除</strong> で、<strong>はい、削除します</strong> をクリックします。</p></li>
+</ol>
+<h3 id="cloud9-の削除">Cloud9 の削除</h3>
+<ol type="1">
+<li><p><strong>サービス</strong> &gt; <strong>Cloud9</strong> をクリックします。</p></li>
+<li><p><strong>DevAWSomeDay</strong> のリンクをクリックして、次の画面右上の <strong>Delete</strong> ボタンをクリックします。(IDE が一つしかない場合はデフォルトで選択状態になっていますので、そのまま<strong>Delete</strong> ボタンをクリックしてください。）</p></li>
+<li><p><strong>Delete DevAWSomeDay</strong> 画面で、<strong>Delete</strong> と入力して、<strong>Delete</strong> ボタンをクリックします。</p></li>
+</ol>
+<h3 id="iam-ユーザポリシーの削除">IAM ユーザ・ポリシーの削除</h3>
+<ol type="1">
+<li><p>ルートアカウントでログインしなおします。マネージメントコンソールの右上の <strong>DevAWSomeUser @ XXX</strong> をクリックします。</p></li>
+<li><p><strong>サインアウト</strong> をクリックします。</p></li>
+<li><p>画面右上の <strong>コンソールへログイン</strong> をクリックします。</p></li>
+<li><p>ルートアカウントのサインイン画面が表示されない場合は、<strong>ルートアカウント認証情報を使用してサインイン</strong> リンクをクリックします。</p></li>
+<li><p>ルートアカウントでサインインします。(もしくは他のIAM ユーザでログインしてもかまいませんが、IAM の操作権限を持っている必要があります。)</p></li>
+<li><p><strong>サービス</strong> &gt; <strong>IAM</strong> を選択します。</p></li>
+<li><p>ナビゲーションペインで、<strong>ユーザ</strong> を選択します。</p></li>
+<li><p><strong>DevAWSomeUser</strong> にチェックを入れて、<strong>ユーザの削除</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ユーザの削除</strong> 画面で、以下の部分にチェックを入れて、<strong>はい、削除します</strong> をクリックします。</p>
+<blockquote>
+<p>1人以上のユーザーが最近 AWS にアクセスしました。これらを削除すると実行中のシステムに影響する可能性があります。これらのユーザーを削除することを確認し、チェックボックスをオンにしてください。</p>
+</blockquote></li>
+<li><p><strong>ポリシー</strong> を選択します。</p></li>
+<li><p><strong>検索</strong> 入力欄に <strong>DevAWSomePolicy</strong> と入力します。</p></li>
+<li><p>表示されたポリシーにチェックを入れて、<strong>ポリシーアクション</strong> &gt; <strong>削除</strong> をクリックします。</p></li>
+<li><p><strong>ポリシーの削除</strong> 画面で、<strong>削除</strong> ボタンをクリックします。</p></li>
+</ol>
+<p>以上で、ラボで生成したすべてのリソースが削除されました。</p>
+</body>
+</html>

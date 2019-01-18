@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>06-APIGateway</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">06-APIGateway</h1>
+</header>
+<h1 id="lab06-api-gateway-でapi-を作成しlambda-関数を実行してdynamodb-のデータをアプリケーションで表示する">Lab06: API Gateway でAPI を作成しLambda 関数を実行してDynamoDB のデータをアプリケーションで表示する</h1>
+<p>このラボでは、以下のような構築をします。</p>
+<ul>
+<li>DynamoDB からユーザ名(username) をキーにして、画像項目一覧を取得するLambda を作成します</li>
+<li>API Gateway にてLambda と連携するAPI を作成します</li>
+<li>アプリケーションからAPI を実行して、取得したデータを画面上に表示します。</li>
+<li>API の呼び出しは、アプリケーションにて認証済みのユーザのみ許可されるように認証の設定を行います。</li>
+</ul>
+<p><img src="images/Lab06-Architecture.png" /></p>
+<hr />
+<h2 id="samサーバレスアプリケーションモデル-を利用したapi-gateway-とlambda-のデプロイ">SAM(サーバレスアプリケーションモデル) を利用したAPI Gateway とLambda のデプロイ</h2>
+<p>このラボでは、以下の3つのリソースを作成します。</p>
+<ul>
+<li>APIGateway
+<ul>
+<li>Client からリクエストを受け付けるAPI</li>
+<li>URL パスパラメータでユーザ名(username)を受付る</li>
+<li>IAM 認証を設定し、適切な権限を持ったユーザのみ呼び出すことができる</li>
+</ul></li>
+<li>Lambda
+<ul>
+<li>APIGateway から呼び出される</li>
+<li>ユーザ名をもとに、DynamoDB からデータ取得、日付の降順でソート</li>
+</ul></li>
+<li>IAM Role
+<ul>
+<li>Lambda に割り当てるロール</li>
+</ul></li>
+</ul>
+<p><img src="images/Lab06-CreationRecsources.png" /></p>
+<p>AWS ではリソースを作成する方法として、以下のようにいくつかの方法を提供しています。</p>
+<ul>
+<li>マネージメントコンソール
+<ul>
+<li>UI で手動で作成</li>
+</ul></li>
+<li>AWS CLI (コマンドラインインタフェース)
+<ul>
+<li>シェルに組み込んで自動化可能</li>
+</ul></li>
+<li>AWS CloudFormation (CFN)
+<ul>
+<li>生成したいリソースをJSONやYAMLコード（=テンプレートと呼ぶ）に記述しておき、このコードをCFN で実行することで自動的にリソース群を生成する（なお、CFN で生成したリソース群のことをスタックと呼ぶ)</li>
+</ul></li>
+</ul>
+<p>また、CloudFormation の拡張としてサーバレスアプリケーションモデル(SAM) があります。AWS 上で構築するサーバレスアプリケーションに必要な、API Gateway、AWS Lambda 関数および Amazon DynamoDB テーブルを簡易にCFNテンプレートに定義することができます。</p>
+<p>このラボでは、SAM 形式で作成したCFN テンプレートを利用して、３つのリソース(API Gateway/Lambda/IAM Role) を一括で自動作成します。またS3 バケットの作成やCloudFormation に対する操作はCloud9 のターミナルから <strong>AWS CLI</strong> を利用して実施します。</p>
+<h4 id="デプロイ用のs3-の作成">デプロイ用のS3 の作成</h4>
+<p>CloudFormation はテンプレートや、デプロイ対象のLambda コードなど一旦S3 上に格納してから処理します。よって、まずはデプロイ処理用のS3 を作成します。</p>
+<ol type="1">
+<li><p>Cloud9 画面を表示します。</p></li>
+<li><p>ターミナル画面を表示します。もし閉じてしまっている場合は、<strong>メニュー</strong> &gt; <strong>Window</strong> &gt; <strong>New Terminal</strong> をクリックして新しいターミナルを起動します。</p></li>
+<li><p>以下のコマンドを実行します。</p>
+<pre><code>cd /home/ec2-user/environment/photoapp/lambda/photoapi</code></pre></li>
+<li><p>以下のコマンドを実行してバケットを作成します。 &lt;yourname&gt; はご自身の名前に書き換えてください。</p>
+<pre><code>aws s3 mb s3://devawsome-deploy-&lt;yourname&gt; --region us-west-2
+</code></pre>
+<p>以下のように表示されます。</p>
+<pre><code>make_bucket: devawsome-deploy-&lt;yourname&gt;</code></pre>
+<p>もし以下のようなエラーが出たら、バケット名が重複していますので、異なる名前で再度実行してください。</p>
+<pre><code>make_bucket failed: s3://devawsome-deploy-&lt;yourname&gt; An error occurred (BucketAlreadyExists)</code></pre></li>
+</ol>
+<h4 id="cloudformation-を利用した3つのリソースの作成">CloudFormation を利用した3つのリソースの作成</h4>
+<p>それでは、実際にCloudFormation で SAM テンプレートを指定して3つのリソースを作成してみます。</p>
+<ol type="1">
+<li><p><strong>swagger.yaml</strong> ファイルをS3 上にアップロードします。このファイルは <strong>API Gateway</strong> で作成されるリソースを定義したファイルです。以下のコマンドを実行してください。(&lt;yourname&gt; は書き換えてください。)</p>
+<pre><code>aws s3 cp ./swagger.yaml s3://devawsome-deploy-&lt;yourname&gt; --region us-west-2</code></pre></li>
+<li><p>以下の <strong>aws cloudformation package</strong> コマンドを実行して、テンプレートおよびLambda で実行するコードを含めたパッケージング処理を実行します。(&lt;yourname&gt; は、ご自身の名前に書き換えてください。)</p>
+<pre><code>aws cloudformation package --template-file template.yaml  \
+  --s3-bucket devawsome-deploy-&lt;yourname&gt;  \
+  --output-template-file packaged.yaml  \
+  --region us-west-2</code></pre>
+<p>以下のような内容が出力されれば正常に動作しています。</p>
+<pre><code>Uploading to fa360c83d39ba091f7c89a22bc24a30e  3902 / 3902.0  (100.00%)
+Successfully packaged artifacts and wrote output template to file packaged.yaml.
+～ 略 ～</code></pre></li>
+<li><p>次に以下の <strong>aws cloudformation deploy</strong> コマンドを実行して、リソースを作成します。(2箇所、&lt;yourname&gt; がありますので、両方ともご自身の名前に書き換えてください。)</p>
+<pre><code>aws cloudformation deploy --template-file ./packaged.yaml \
+  --stack-name DevAWSomePhotoAPIStack \
+  --parameter-overrides  \
+  PhotoAppBucketName=devawsome-photo-&lt;yourname&gt; \
+  DeployBucketName=devawsome-deploy-&lt;yourname&gt; \
+  --capabilities CAPABILITY_IAM  \
+  --region us-west-2
+</code></pre>
+<p>以下のような内容が出力されれば正常に動作しています。(Waiting for XXX で1-2分ほど待ちます)</p>
+<pre><code>Waiting for changeset to be created..
+Waiting for stack create/update to complete
+Successfully created/updated stack - DevAWSomePhotoAPIStack</code></pre>
+<p>SAM および CloudFormation によるリソースの自動生成は以上です。</p></li>
+</ol>
+<h4 id="リソースの確認">リソースの確認</h4>
+<p>どのようなリソースが作成されたのかはマネージメントコンソールの CloudFormation サービス画面で確認することができます。</p>
+<ol type="1">
+<li><p>マネージメントコンソール を表示します。</p></li>
+<li><p><strong>サービス</strong> &gt; <strong>CloudFormation</strong> を選択します。(<strong>CloudFormation</strong> は、管理ツールカテゴリにあります。)</p></li>
+<li><p><strong>スタックの名前</strong> に、<strong>DevAWSomePhotoAPIStack</strong> があることを確認し、一覧でチェックを入れます。</p>
+<p>スタックとは、テンプレート(先ほどのtemplate.yamlファイル) を実行することで生成されたリソース群全体を表します。</p></li>
+<li><p>画面下半分に、スタックの情報が表示されます。<strong>リソース</strong> タブを選択します。</p></li>
+<li><p><strong>リソース</strong> タブ内には、テンプレートから作成されたリソースを見ることができます。大きく分けて、<strong>APIGateway</strong>、<strong>Lambda</strong>、<strong>IAMRole</strong> の3つが作成されていることがわかります。（物理ID がリンク形式になっていますので、物理ID をクリックすると各サービス画面でリソースを見ることができます。）</p>
+<p><img src="images/Lab06-StackResources.png" /></p></li>
+<li><p>次に <strong>出力</strong> タブをクリックします。ここでは、テンプレートに定義されていた出力値を見ることができます。今回は、作成されたAPIGateway のエンドポイントを出力するようにしています。この値は後でアプリケーションに設定しますのでコピーしておいてください。</p>
+<p><img src="images/Lab06-API-Endpoint.png" /></p></li>
+</ol>
+<hr />
+<h2 id="アプリケーションの実行">アプリケーションの実行</h2>
+<p>では、アプリケーションを実行してみます。いくつか設定が必要です。</p>
+<h4 id="アプリケーションの設定">アプリケーションの設定</h4>
+<ol type="1">
+<li><p>Cloud9 画面を表示してください。</p></li>
+<li><p><strong>Environment</strong> にて、<strong>DevAWSomeDay</strong> &gt; <strong>photoapp</strong> &gt; <strong>web</strong> &gt; <strong>src</strong> まで展開します。</p></li>
+<li><p><strong>config.js</strong> ファイルをクリックして開きます。</p></li>
+<li><p><strong>endpoint</strong> 部分に、先ほどCloudFormation 画面でコピーした内容を貼り付けます。以下のようになります。(name/region は書き換えないでください。)</p>
+<pre><code>API: {
+    endpoints: [{
+        name: &#39;DevAWSomeDayAPI&#39;,
+        endpoint: &#39;https://abcdefghij.execute-api.us-west-2.amazonaws.com/prod&#39;,
+        region: &#39;us-west-2&#39;
+    }]
+},</code></pre></li>
+<li><p>次に、<strong>MyPhotos.js</strong> ファイルを開きます。</p></li>
+<li><p><strong>// Task: API Call</strong> と記述された箇所を探します。</p></li>
+<li><p>以下のようにコメントアウトされている箇所のコメントを外してください。</p>
+<pre><code>変更前
+
+// Task: API Call
+console.log(&quot;Define Get photos API Call here.&quot;);
+/*          ← 削除する
+let apiName = &#39;DevAWSomeDayAPI&#39;;
+let path = `/photos/${username}`;
+let myInit = {
+    headers: {},
+    response: true
+};
+API.get(apiName, path, myInit).then(response =&gt; {
+        var data = response.data;
+        console.log(&quot;API call GetPhotos is succeeded!&quot;);
+        this.setState({
+            photos: data.Items
+        });
+    })
+    .catch(err =&gt; {
+        console.log(err);
+        alert(&quot;Err: &quot; + err);
+    });
+*/         ← 削除する</code></pre>
+<p>以下のようになります。</p>
+<pre><code>変更後
+
+// Task: API Call
+console.log(&quot;Define Get photos API Call here.&quot;);
+
+let apiName = &#39;DevAWSomeDayAPI&#39;;
+let path = `/photos/${username}`;
+let myInit = {
+    headers: {},
+    response: true
+};
+API.get(apiName, path, myInit).then(response =&gt; {
+        var data = response.data;
+        console.log(&quot;API call GetPhotos is succeeded!&quot;);
+        this.setState({
+            photos: data.Items
+        });
+    })
+    .catch(err =&gt; {
+        console.log(err);
+        alert(&quot;Err: &quot; + err);
+    });</code></pre></li>
+</ol>
+<h4 id="アプリケーションの実行-1">アプリケーションの実行</h4>
+<ol type="1">
+<li><p><code>yarn start</code> が実行されていることを確認して、アプリケーション画面を表示してください。（閉じてしまっている場合は、<strong>Prevew</strong> &gt; <strong>Preview Running Application</strong> で表示できます。)</p></li>
+<li><p>念のため、更新ボタンをクリックして画面を更新してください。</p></li>
+<li><p><strong>Sign In Account</strong> 画面が表示された場合は、サインインします。</p></li>
+<li><p>画面で、<strong>My Photo List</strong> ボタンをクリックします。今回は、エラーが発生します。 以下のエラーメッセージがalert で表示されます。</p>
+<pre><code>Err: Error: Network Error</code></pre>
+<p>この原因を調べるために、ブラウザの開発者ツールを利用します。</p></li>
+<li><p>Chrome、FireFox の場合は、MyPhotApp を別タブで開いて、キーボードの <strong>F12</strong> ボタンを押すと開発者ツールを表示できます。</p></li>
+<li><p><strong>My Photo List</strong> をクリックしたときに、以下のように <strong>403</strong> エラーが発生していることがわかります。</p>
+<p><em>Chrome</em> の場合</p>
+<p><img src="images/Lab06-Chrome-Debug.png" /></p>
+<p><em>FireFox</em> の場合</p>
+<p><img src="images/Lab06-FireFox-Debug.png" /></p>
+<p>API 呼び出しの権限がないことを示しています。これは、前のラボで <strong>S3</strong> へのアクセス権限がなかった時と同様です。</p></li>
+</ol>
+<h4 id="iam-ロールへの-api-呼び出し権限の付与">IAM ロールへの API 呼び出し権限の付与</h4>
+<ol type="1">
+<li><p><strong>Cognito_DevAWSomeIDPoolAuth_Role</strong> にAPI呼び出しの権限を付与します。マネージメントコンソールを開き、<strong>サービス</strong> &gt; <strong>IAM</strong> を選択します。</p></li>
+<li><p>ナビゲーションペインにて、<strong>ロール</strong> を選択し、<strong>Cognito_DevAWSomeIDPoolAuth_Role</strong> ロールをクリックします。(検索フィールドで検索すると確実です。)</p></li>
+<li><p><strong>概要</strong> 画面にて <strong>ポリシーのアタッチ</strong> をクリックします。</p></li>
+<li><p><strong>Attach policy</strong> 画面にて、<strong>AmazonAPIGatewayInvokeFullAccess</strong> にチェックを入れます。（検索フィールドで検索してください。）</p></li>
+<li><p>画面右下の <strong>ポリシーのアタッチ</strong> ボタンをクリックします。</p></li>
+<li><p><strong>概要</strong> ページにて、<strong>AmazonAPIGatewayInvokeFullAccess</strong> がアタッチされていることを確認します。</p>
+<p>以上でIAM ロールの設定は完了です。</p></li>
+</ol>
+<h4 id="アプリケーションの再実行">アプリケーションの再実行</h4>
+<ol type="1">
+<li><p>アプリケーション画面で、<strong>My Photo List</strong> ボタンをクリックします。</p></li>
+<li><p>今度はエラーとはならずに、以下のように表示されれば正常に動作しています。（エラーとなった場合は、画面をリロードし何度かボタンを押してください。IAMロール が有効になるまで多少タイムラグがあります。）</p>
+<p><img src="images/Lab06-Application-MyPhotoList.png" /></p></li>
+</ol>
+<h4 id="署名付きurl-の確認">署名付きURL の確認</h4>
+<p>画面には、S3 にアップロードした画像と、DynamoDB に格納された情報が表示されますが、画像はどのようにブラウザ上に表示されているのでしょうか？<br />
+以下の手順で画像のURLを確認してみます。</p>
+<ol type="1">
+<li><p>ブラウザ上で、画像を右クリックして、<strong>画像アドレスをコピー</strong> してください。</p></li>
+<li><p>テキストファイルなどに張り付けてください。以下のようなURLになります。(長いので一部抜粋)</p>
+<blockquote>
+<p>https://devawsome-photo-&lt;yourname&gt;.s3.us-west-2.amazonaws.com/private/us-west-2%3A81327ed3-797a-4a39-a20a-7ba86535ebe7/1523586375596_cat01.jpg?AWSAccessKeyId=ASIAJECCUDISMK7RVHDQ&amp;Expires=1523589999&amp;Signature=KosMR0Joi%2BmYo2nJKsFznQ2g090%3D&amp;x-amz-security-token=FQoDYXdzE…略…A1gU%3D</p>
+</blockquote></li>
+<li><p>このURL を直接ブラウザのアドレスに張り付けて実行すると画像が表示されることが確認できます。</p></li>
+<li><p>では、URL パラメータ部分(? 以下)を取り除いてブラウザでアクセスしたらどうなるでしょうか？上記URL例だと次のように <strong>.jpg</strong> までのURL です。</p>
+<blockquote>
+<p>https://devawsome-photo-&lt;yourname&gt;.s3.us-west-2.amazonaws.com/private/us-west-2%3A81327ed3-797a-4a39-a20a-7ba86535ebe7/1523586375596_cat01.jpg</p>
+</blockquote>
+<p>次のように <strong>AccessDenied</strong> エラーになります。</p>
+<pre><code>&lt;Error&gt;
+&lt;Code&gt;AccessDenied&lt;/Code&gt;
+&lt;Message&gt;Access Denied&lt;/Message&gt;
+&lt;RequestId&gt;5BCE893D6F98640D&lt;/RequestId&gt;
+&lt;HostId&gt;
+3vqZvRbO4tddshB117lS3ct6hFHzklfivMaaRsacY2M+TB2kA+TpOgZ41YBh3W82HB1eaj7m/7w=
+&lt;/HostId&gt;
+&lt;/Error&gt;</code></pre>
+<p>これはLab04 でも確認した通り、<strong>devawsome-photo-&lt;yourname&gt;</strong> バケットは公開設定にしていないので、データにアクセスするには適切なアクセス権限が必要となり、呼び出しには認証情報が必要となるからです。 今回は、サーバサイドのLambda 関数の中でURL に署名をしてアプリケーションに返すことで、アプリケーションで認証を受けた人だけが安全にS3 上のデータを参照できるという仕組みを実現することができます。このようなURL のことを署名付きURL(Presigned URL) と呼びます。</p>
+<p>以上で、アプリケーションの実行は終了です。</p></li>
+</ol>
+<hr />
+<h2 id="コードの解説">コードの解説</h2>
+<p><strong>注</strong> ここから先は、コードの解説をしています。ここは飛ばして次のラボに進むこともできます。</p>
+<p>まずは、Server 側の実装を振り返ります。</p>
+<h4 id="api-gateway-の構成">API Gateway の構成</h4>
+<p>マネージメントコンソールで、API Gateway の構成を確認してみましょう</p>
+<ol type="1">
+<li><p>マネージメントコンソールを表示して、<strong>サービス</strong> &gt; <strong>API Gateway</strong> を選択します。(<strong>API Gateway</strong> は、ネットワーキング &amp; コンテンツ配信 カテゴリに含まれます)</p></li>
+<li><p><strong>API Gateway</strong> サービス画面で、<strong>DevAWSomePhotoApi</strong>　をクリックします。</p></li>
+<li><p><strong>リソース</strong> で、<strong>/{username}</strong> をクリックします。以下のような画面になります。</p>
+<p><img src="images/Lab06-APIGateway-Resources.png" /></p></li>
+<li><p><strong>/{username}</strong> が表すものは、パスパラメータといわれるもので、URLのパスを利用してパラメータをAPI に渡すために利用されます。</p>
+<p>例えば、以下のようなURL でこのAPIを実行した場合、<strong>test01</strong> が、<strong>username</strong> パラメータで取得できるということです。</p>
+<pre><code>https://&lt;api-endpoint&gt;/photos/test01</code></pre></li>
+<li><p><strong>GET</strong> メソッドと <strong>OPTIONS</strong> メソッドの2つが定義されています。<strong>OPTIONS</strong> メソッドの役割は、<strong>CORS</strong> の制御です。<strong>CORS</strong> の話は、Lab04で説明しましたが、仕組み的には、HTTP OPTIONS メソッドにより、リクエストが許可されているかどうかを確認したのちに、HTTP GET メソッドにより処理が実行されるという流れになります。</p></li>
+<li><p><strong>GET</strong> メソッドの、<strong>認証</strong> は、<strong>AWS_IAM</strong> に設定されています。これは、呼び出し側は、適切な認証情報(静的なアクセスキー、もしくは一時的アクセスキー) を持っていないと呼び出すことができないということになります。今回は、Cognito のIDプールに定義したIAM ロールにAPI 呼び出し権限を付与することで、アプリケーションからAPI を実行できるようになりました。</p></li>
+<li><p><strong>GET</strong> をクリックして、詳細を見てみましょう。</p>
+<p><img src="images/Lab06-API-Get-Detail.png" /></p></li>
+<li><p>一番右を見ると、Lambda が登録されていることがわかります。</p>
+<p>それでは、Lambda の詳細を確認してみます。</p></li>
+</ol>
+<h4 id="lambda-の構成">Lambda の構成</h4>
+<p>Lambd の構成の仕方や、IAM ロールの考え方は、Lab05 で解説した内容と同じです。<br />
+このラボでLambda 関数に登録したコードは、Cloud9 画面の <strong>photoapp</strong> &gt; <strong>lambda</strong> &gt; <strong>photoapi</strong> &gt; <strong>js</strong> にある、<strong>index.js</strong> になります。</p>
+<p>このLambda は、JavaScript での実装となります。このJavaScript はブラウザ側で動作するクライアントサイドのコードではなく、Node.js 上で動作するサーバサイドのJavaScript 実装となります。<br />
+このLambda では、主に2つの処理を行っています。</p>
+<ul>
+<li>DynamoDB から <strong>username</strong> をキーにして画像情報一覧を取得</li>
+<li>S3 で、各画像データの署名付きURLを作成</li>
+</ul>
+<p>DynamoDB と S3 を利用するため、以下の2つのモジュールを利用します。</p>
+<pre><code>const ddb = new AWS.DynamoDB.DocumentClient();
+const s3 = new AWS.S3();</code></pre>
+<p>DynamoDB の処理は、<strong>devawsome-photos</strong> テーブルから、<strong>username</strong> をキーにして、画像データ一覧を取得することです（画像ファイルそのものはS3 に格納していますので、ここではメタデータのみを取得します。）。 コードは、以下のようになります。</p>
+<pre><code>var params = {
+     TableName: &quot;devawsome-photos&quot;,
+     IndexName: &quot;username-updatetime-index&quot;,
+     KeyConditionExpression: &quot;#un = :un&quot;,
+     ExpressionAttributeNames: {
+         &quot;#un&quot;: &quot;username&quot;
+     },
+     ExpressionAttributeValues: {
+         &quot;:un&quot;: username
+     },
+     ScanIndexForward: false
+ };
+
+ ddb.query(params, function(err, data) {
+   ～ 以下略 ～</code></pre>
+<p>ポイントは、パラメータで <strong>IndexName</strong> を指定している部分ですが、今回登録日時の降順で表示するため、<strong>ローカルセカンダリインデックス(LSI)</strong> をDynamoDB テーブルに作成しており(Lab05 参考)、この <strong>LSI</strong> を指定してデータを取得しています。<br />
+検索処理は、<strong>query</strong> メソッドをコールしています。DynamoDB はNoSQL 型のデータベースですので、データを取得する際は、必ずパーティションキーを指定します。このアプリケーションで利用しているDynamoDB テーブルのパーティションキーは <strong>username</strong> でしたので、<strong>query</strong> の検索条件には、かならず <strong>username</strong> を指定しなければなりません。 その他の条件が必要な場合は、ソートキーを指定できます。今回は並び順のみで、LSI のソートキーを利用しています。</p>
+<p>S3 の処理は、署名付きURLを作成することです。以下のようなコードになります。</p>
+<pre><code>function getSignedUrlPromise(method, params) {
+    return new Promise(function(resolve, reject) {
+        s3.getSignedUrl(method, params, function(err, url) {
+            if (err) {
+                console.log(&quot;getSignedUrlPromise Error: &quot; + err);
+                reject(err);
+            }
+            else {
+                console.log(&quot;Signed Url: &quot; + url);
+                resolve(url);
+            }
+        });
+    });
+}</code></pre>
+<p>ここで作成された署名付きURL(PreSignedURL) は最終的にはアプリケーション側の処理で、以下のように、img のソースに指定され、PreSignedURL を利用して、ブラウザ上に安全に画像が表示されていました。</p>
+<pre><code>&lt;img alt=&quot;phogo&quot; width=&quot;150&quot; src={preSignedURL} /&gt;</code></pre>
+<h4 id="client-実装">Client 実装</h4>
+<p>それでは、Client 側の実装を振り返ります。API の呼び出しには、Amplify の <strong>API</strong> モジュールを利用します。</p>
+<blockquote>
+<p>AWS Amplify API モジュールに関しては、以下のドキュメントを参考にしてください。<br />
+<a href="https://aws.github.io/aws-amplify/media/api_guide">AWS Amplify API</a></p>
+<p><strong>MyPhotos.js</strong> 内に記述されているAPI 呼び出し部分のコードは以下になります。</p>
+</blockquote>
+<pre><code>import { Storage, API } from &#39;aws-amplify&#39;;
+
+～ 略 ～
+
+getMyPhotos(username) {
+
+    // Task: API Call
+    let apiName = &#39;DevAWSomeDayAPI&#39;;
+    let path = `/photos/${username}`;
+    let myInit = {
+        headers: {},
+        response: true
+    };
+    API.get(apiName, path, myInit).then(response =&gt; {
+            var data = response.data;
+            console.log(&quot;API call GetPhotos is succeeded!&quot;);
+            this.setState({
+                photos: data.Items
+            });
+        })
+        .catch(err =&gt; {
+            console.log(err);
+            alert(&quot;Err: &quot; + err);
+        });
+
+}</code></pre>
+<p>このラボで作成したAPI は、パスパラメータでパラメータを受け取れるように構成しました。よって、次のような形式で、API にパラメータを渡しています。</p>
+<pre><code>let path = `/photos/${username}`;</code></pre>
+<p>今までと同様に、最終的なHTTP リクエストには、署名が付与されますので、API の認証方式を、<strong>AWS_IAM</strong> にしている場合、適切に認証されて実行されるように制御できます。</p>
+<p>以上で、このラボは終了です。</p>
+</body>
+</html>

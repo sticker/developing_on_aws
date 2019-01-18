@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>05-Lambda-Rekognition</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">05-Lambda-Rekognition</h1>
+</header>
+<h1 id="lab05-s3-にアップロードされた画像にrekognition-でラベルを付けdynamodbに情報を格納する">Lab05: S3 にアップロードされた画像にRekognition でラベルを付け、DynamoDBに情報を格納する</h1>
+<p>このラボでは、以下のような内容を構築します。</p>
+<ul>
+<li>S3 に画像ファイルがアップロードされたイベントを契機に、Lambda 関数を実行します</li>
+<li>Lambda 関数内で、Amazon Rekognition を利用して、画像に写っている内容を解析してラベルを取得します（ここでいうラベルとは、例えばcat や sea、baseball など、画像内に移っているものを認識してラベル化します）</li>
+<li>Rekognition から取得したラベルと、画像のオブジェクトキーやメタ情報（usernameや、description など）を合わせて、DynamoDB にデータを格納します</li>
+</ul>
+<p><img src="images/Lab05-Architecture.png" /></p>
+<hr />
+<h2 id="dynamodb-を構成する">DynamoDB を構成する</h2>
+<p>DynamoDB は、どのような規模のデータも、スループットも満たすことができるフルマネージド型のNoSQL データベースです。またどのような規模になっても、データへのアクセスは、非常に小さいレイテンシー(10ミリ秒未満) を実現できます。</p>
+<p>今回は、S3 に格納された画像データの Index 用途および、画像ラベルやメタデータを格納する目的で利用します。（※ ここでいうIndex とは、アップロードしたユーザの画像のみを検索したり、時系列で並び替えたりする目的で利用します。)</p>
+<h4 id="dynamodb-テーブルの作成">DynamoDB テーブルの作成</h4>
+<p>DynamoDB を利用するには、まずテーブルを作るところから開始します。 このラボでは、DynamoDB テーブルを、AWS CLI を利用して作成します。</p>
+<ol type="1">
+<li><p>Cloud9 画面を表示します。 画面上のメニューバーにある <strong>Window</strong> &gt; <strong>New Terminal</strong> を選択します。</p></li>
+<li><p>新しいターミナルが起動しますので、以下のコマンドを実行します。(コマンドをターミナルにペーストするときは、<strong>ctrl + v</strong> でできます。右クリックでのペーストはできませんのでご注意ください。)</p>
+<pre><code>
+cd ~/environment/photoapp/dynamodb/
+aws dynamodb create-table --cli-input-json file://./photos-table.json --region us-west-2
+</code></pre>
+<p>正常に実行されると、以下のような内容が返ってきます。</p>
+<pre><code>{
+    &quot;TableDescription&quot;: {
+        &quot;TableArn&quot;: &quot;arn:aws:dynamodb:us-west-2:212691234567:table/devawsome-photos&quot;,
+        &quot;LocalSecondaryIndexes&quot;: [
+        ～ 略　～
+        &quot;ItemCount&quot;: 0,
+        &quot;CreationDateTime&quot;: 1523425086.359
+    }
+}</code></pre></li>
+<li><p>DynamoDB テーブルを確認します。create-table コマンドは、テーブル作成が開始したらすぐに処理が戻り、テーブル作成処理は非同期で実行されています。なのでコマンドが帰ってきた瞬間はテーブルは作成中です。テーブルが作成できたかどうかは、以下のコマンドで確認できます。</p>
+<pre><code>
+aws dynamodb describe-table --table-name devawsome-photos --region us-west-2 --query &#39;Table.TableStatus&#39;
+</code></pre>
+<p>作成直後は、結果は <strong>“CREATING”</strong> となります。何度かコマンドを実行して結果が、<strong>“ACTIVE”</strong> になるのを待ちます。</p></li>
+<li><p>DynamoDB テーブルは、マネージメントコンソールでも確認できます。マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>DynamoDB</strong> を選択します。(<strong>DynamoDB</strong> はデータベースカテゴリ内にあります。)</p></li>
+<li><p>左側のナビゲーションペインにて、<strong>テーブル</strong> をクリックします。</p></li>
+<li><p><strong>devawsome-photos</strong> という名前のテーブルがあることを確認します。</p></li>
+<li><p>Cloud9 画面に戻り、DyamoDB テーブルがどのような構成で作成されたのか確認します。画面左の<strong>Environment</strong> から、<strong>photoapp</strong> &gt; <strong>dynamodb</strong> まで展開し、<strong>photo-table.json</strong> をクリックして開きます。</p></li>
+<li><p>一部抜粋して説明すると、以下の内容がテーブル名の定義およびプライマリーキーの定義になります。特に <strong>KeyType</strong> : <strong>HASH</strong> となっている <strong>username</strong> が重要で、パーティションキーとも呼ばれます。DynamoDB ではパーティションキーにより、データがパーティションごとに分散配置される仕組みになっており、パーティションが増えることで水平方向にスケールします。今回のアプリケーションはユーザごと(=username)に画像一覧データを表示しますので、パーティションキーとして、<strong>username</strong> を指定しています。</p>
+<pre><code>&quot;TableName&quot;: &quot;devawsome-photos&quot;,
+&quot;KeySchema&quot;: [
+    {
+        &quot;KeyType&quot;: &quot;HASH&quot;,
+        &quot;AttributeName&quot;: &quot;username&quot;
+    },
+    {
+        &quot;KeyType&quot;: &quot;RANGE&quot;,
+        &quot;AttributeName&quot;: &quot;objectkey&quot;
+    }
+]</code></pre></li>
+<li><p>もう一つ、以下のように <strong>LocalSecondaryIndex</strong> (略してLSI) を作成しています。ソートキー(RANGE となっているキー) を指定していますが、このデータは次のラボで、画面に時系列でデータをソートして表示するのに利用します。</p>
+<pre><code>&quot;LocalSecondaryIndexes&quot;: [
+  {
+      &quot;IndexName&quot;: &quot;username-updatetime-index&quot;,
+      &quot;Projection&quot;: {
+          &quot;ProjectionType&quot;: &quot;ALL&quot;
+      },
+      &quot;KeySchema&quot;: [
+          {
+              &quot;KeyType&quot;: &quot;HASH&quot;,
+              &quot;AttributeName&quot;: &quot;username&quot;
+          },
+          {
+              &quot;KeyType&quot;: &quot;RANGE&quot;,
+              &quot;AttributeName&quot;: &quot;updatetime&quot;
+          }
+      ]
+  }
+]</code></pre>
+<p>以上で、DynamoDB テーブルの作成は完了です。今回はAWS CLI を利用してほぼ自動的に作成しましたが、マネージメントコンソールで手動で構成することも可能です。</p></li>
+</ol>
+<hr />
+<h2 id="s3-のイベントによって動作するlambda-関数を作成する">S3 のイベントによって動作するLambda 関数を作成する</h2>
+<p>S3 に画像データがアップロードされたらそのイベントを契機に動作するLambda 関数を作成します。</p>
+<h4 id="lambda-関数用のiam-ロールの作成">Lambda 関数用のIAM ロールの作成</h4>
+<p>Lambda 関数作成前にまずやることは、IAM ロールの作成です。<br />
+今回作成するLambda は、以下の図のように、<strong>S3</strong> 、<strong>DynamoDB</strong> 、 <strong>Rekognition</strong> および、内部的に <strong>CloudWatch Logs</strong> にアクセスします。Lambda 関数はこの4つのサービスにアクセスできる権限が必要ですが、この権限はIAM ロールによって付与されます。</p>
+<p><img src="images/Lab05-Lambda-IAMRole.png" /></p>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>IAM</strong> を選択します。</p></li>
+<li><p><strong>IAM</strong> サービス画面で、<strong>ロール</strong> を選択し、<strong>ロールの作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ロールの作成</strong> 画面で、<strong>AWS サービス</strong> を選択し（デフォルトで選択されています。）、<strong>このロールを使用するサービスを選択</strong> で、<strong>Lambda</strong> を選択します。</p></li>
+<li><p>画面右下の <strong>次のステップ：タグ</strong> ボタンをクリックします。</p></li>
+<li><p><strong>タグの追加 (オプション)</strong> 画面では何も入力せずに、画面右下の <strong>次のステップ：アクセス権限</strong> ボタンをクリックします。</p></li>
+<li><p><strong>アクセス権限ポリシーをアタッチする</strong> 画面にて、<strong>AmazonS3ReadOnlyAccess</strong> 、<strong>AmazonDynamoDBFullAccess</strong> 、<strong>AmazonRekognitionReadOnlyAccess</strong> および <strong>AWSLambdaBasicExecutionRole</strong> の４つにチェックを入れます。（それぞれのロール名を <strong>検索</strong> フィールドに入力するとすぐに見つかります。）</p></li>
+<li><p><strong>次のステップ:確認</strong> ボタンをクリックします。</p></li>
+<li><p><strong>確認</strong> 画面にて、<strong>ロール名</strong> に、<code>DevAWSome-ImageLabelRole</code> と入力します。<br />
+<strong>ポリシー</strong> で <strong>AmazonS3ReadOnlyAccess</strong> 、<strong>AmazonDynamoDBFullAccess</strong> 、<strong>AmazonRekognitionReadOnlyAccess</strong> および <strong>AWSLambdaBasicExecutionRole</strong> の４つが表示されていることを確認します。(以下の画面のようになります。)</p>
+<p><img src="images/Lab05-Lambda-IAMRole-Confirm.png" /></p></li>
+<li><p><strong>ロールの作成</strong> ボタンをクリックします。</p>
+<p>ロール一覧で、作成したロールが存在することを確認してください。以上でLambda 用のIAM ロールの作成は完了です。</p></li>
+</ol>
+<h4 id="lambda-関数の作成">Lambda 関数の作成</h4>
+<p>では、Lambda 関数の作成に移ります。</p>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>Lambda</strong> を選択します。(<strong>Lambda</strong> はコンピューティング　カテゴリにあります。)</p></li>
+<li><p>リージョンが <strong>オレゴン</strong> になっていることを確認して、<strong>関数の作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>関数の作成</strong> 画面で、<strong>一から作成</strong> を選択し、<strong>名前</strong> に “DevAWSomeImageLambda”、<strong>ランタイム</strong> は <strong>Python 3.6</strong> を選択します。<br />
+<strong>ロール</strong> は、<strong>既存のロール</strong> で先ほど作成した <strong>DevAWSome-ImageLabelRole</strong> を選択します。</p>
+<p><img src="images/Lab05-Lambda-Create01.png" /></p></li>
+<li><p><strong>関数の作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>DevAWSomeImageLabel</strong> 画面が表示され <strong>「これで、 Lambda 関数「DevAWSomeImageLambda」が正常に作成されました。」</strong> というメッセージが表示されます。以下のようなエラーが出ていても問題ありませんので無視してください。</p>
+<blockquote>
+<p>User: arn:aws:iam::212694071082:user/DevAWSomeUser is not authorized to perform: kms:ListAliases on resource: *</p>
+</blockquote></li>
+<li><p><strong>DevAWSomeImageLabel</strong> 画面の真ん中ほどにスクロールすると、<strong>lambda_function.py</strong> のコードを入力するエディタが見つかります。この中で直接コードを記述することができますが、今回は Cloud9 内のターミナルから CLI にてコードのデプロイを実行します。合わせて、設定の変更(タイムアウトを20秒にする) もCLI で実行します。</p></li>
+<li><p>マネージメントコンソールはこのままで、Cloud9 画面に移ります。</p></li>
+<li><p>Cloud9 画面でターミナルが開いている場合は、そのターミナルを利用してください。ターミナルがない場合は、メニューバーから <strong>Window</strong> &gt; <strong>New Terminal</strong> を選択して新しいターミナルを開いてください。</p></li>
+<li><p>Lambda 関数にコードをデプロイしますが、コードは、<strong>photoapp</strong> &gt; <strong>lambda</strong> &gt; <strong>imagelabels</strong> &gt; <strong>python</strong> の、<strong>lambda_function.py</strong> になります。<strong>lambda_function.py</strong> ファイルをクリックして開きます。</p></li>
+<li><p>一部だけ抜粋すると、以下のように <strong>boto3</strong> という Python用のSDK がロードされて、<strong>s3</strong> / <strong>rekogniton</strong> / <strong>dynamodb</strong> のクライアントが利用されているのがわかります。</p>
+<pre><code>import boto3
+
+s3 = boto3.client(&#39;s3&#39;)
+rek = boto3.client(&#39;rekognition&#39;)
+dynamodb = boto3.resource(&#39;dynamodb&#39;)</code></pre>
+<p>Lambda 内でAWS SDK を利用する場合は、Lambda 実行環境上にライブラリが含まれていますので追加でライブラリをデプロイする必要性はありません。 もし、3rd パーティ製のライブラリを組み込んで利用する場合は、ライブラリを含めてデプロイする必要があります。</p>
+<p>Lambda 実行環境と利用できるライブラリは、以下のドキュメントを参考にしてください。<br />
+<a href="https://docs.aws.amazon.com/ja_jp/lambda/latest/dg/current-supported-versions.html">Lambda 実行環境と利用できるライブラリ</a></p>
+<blockquote>
+<p>Note: コードエディタ内のurllib モジュールを利用している箇所でエラーが発生していますが、これは無視してかまいません。デフォルトのPython エディタのバージョンがデフォルトでPython2 になっているからです。気になる方は、Cloud9 画面の左上の <strong>AWS Cloud9</strong> をクリックし、<strong>Preferences</strong> を選択します。<strong>Preferences</strong> 画面の左側のメニュー内にて、 <strong>Python Support</strong> を選択して、<strong>Pyhthon Version</strong> を <strong>Python3</strong> に変更します。その後に、lambda_function.py ファイルを開きなおすとエラーは出なくなります。</p>
+</blockquote>
+<p>Lambda 内の処理の流れは、以下のようになっています。(コードの解説は本ラボの最後に記述しています。)</p>
+<ul>
+<li>S3 からメタデータから、アップロードしたUsername とアプリケーション画面で入力したDescription の値を取得します。</li>
+<li>Rekognition を利用して、画像の解析をしラベルを取得します。</li>
+<li>DynamoDB にUsername、Description、Rekognition から取得したラベルなどを登録します。</li>
+</ul></li>
+<li><p>それでは、実際にデプロイ作業を実施します。デプロイは、対象コードをzip にまとめて、<strong>aws lambda update-function-code</strong> を実行します。<br />
+ターミナル内で以下のコマンドを実行してください。(コマンドをコピーする際には、 記号も含めてコピーして、実行してください。)</p>
+<pre><code>cd ~/environment/photoapp/lambda/imagelabels/python/
+zip ImageLabel.zip lambda_function.py
+
+aws lambda update-function-code \
+  --function-name DevAWSomeImageLambda  \
+  --zip-file fileb://ImageLabel.zip \
+  --region us-west-2
+</code></pre>
+<p>正常に処理が実行されると以下のようなLambda の情報が表示されます</p>
+<pre><code>{
+    &quot;TracingConfig&quot;: {
+        &quot;Mode&quot;: &quot;PassThrough&quot;
+    },
+    &quot;CodeSha256&quot;: &quot;DSR+YJAEAzDSnyeI/BTGFhzdXkoM3zAu1fhC5nqvSm0=&quot;,
+    ～ 途中略 ～
+    &quot;Handler&quot;: &quot;lambda_function.lambda_handler&quot;,
+    &quot;Runtime&quot;: &quot;python3.6&quot;,
+    &quot;Description&quot;: &quot;&quot;
+}</code></pre></li>
+<li><p>次にタイムアウトの値を<code>20秒</code> に変更します。以下のコマンドを実行してください。</p>
+<pre><code>
+aws lambda update-function-configuration \
+  --function-name DevAWSomeImageLambda  \
+  --region us-west-2 \
+  --timeout 20
+</code></pre>
+<p>正常に処理が実行されると先ほどと同じようにLambda の情報が表示されます。 特に<strong>Timeout</strong> の値が <strong>20</strong> になっていることを確認してください。</p>
+<pre><code>&quot;Timeout&quot;: 20,</code></pre></li>
+<li><p>マネージメントコンソールで変更が反映されているか確認してみましょう。<strong>サービス</strong> &gt; <strong>Lambda</strong> を選択して、関数の一覧から、<strong>DevAWSomeImageLambda</strong> のリンク部分をクリックします。</p></li>
+<li><p>画面真ん中のコード部分に先ほどのアップロードしたコードに変更されていること、画面下のほうの <strong>タイムアウト</strong> の値が <strong>20</strong> 秒になっていることを確認してください。</p>
+<p>以上で、Lambda 関数の作成は終了です。</p></li>
+</ol>
+<h2 id="s3-バケットのイベント設定でlambda-をキックするように構成する">S3 バケットのイベント設定でLambda をキックするように構成する</h2>
+<p>最後の設定は、S3 バケットに画像が登録されたら、そのイベント処理としてLambda を実行するようにS3 バケットの設定を追加します。</p>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>S3</strong> を選択します。</p></li>
+<li><p>前のラボで作成した <strong>devawsome-photo-&lt;yourname&gt;</strong> を選択します。</p></li>
+<li><p><strong>プロパティ</strong> タブを選択し、プロパティを表示します。</p>
+<p><img src="images\Lab05-S3-Properties.png" /></p></li>
+<li><p>画面下側の <strong>Events</strong> をクリックします。以下のように表示されます。</p>
+<p><img src="images\Lab05-S3-Events.png" /></p></li>
+<li><p><strong>Events</strong> で、<strong>+通知の追加</strong> をクリックします。</p></li>
+<li><p><strong>新しいイベント</strong> で、<strong>名前</strong> に、“ImagePut”、<strong>イベント</strong> で、<strong>Put</strong> のみを選択、<strong>送信先</strong> で <strong>Lambda関数</strong> を選択して、<strong>Lambda</strong> で <strong>DevAWSomeImageLambda</strong> を選択します。以下のようになります。</p>
+<p><img src="images\Lab05-S3-Events-Input.png" /></p></li>
+<li><p><strong>保存</strong> ボタンをクリックします。</p>
+<p>以上で、S3 のイベント設定は終了です。</p></li>
+</ol>
+<h2 id="アプリケーションの動作確認">アプリケーションの動作確認</h2>
+<p>今回はアプリケーション側の変更は不要です。S3 バケットに画像をアップロードするという処理そのものには変更はないからです。</p>
+<ol type="1">
+<li><p>Cloud9 のアプリケーションのPreview 画面もしくは、ブラウザの別タブのアプリケーション画面を表示します。</p></li>
+<li><p>前のラボと同じように、画像をアプリケーションからUpload してください。<strong>Uploading succeeded</strong> と表示されることを確認します。</p></li>
+</ol>
+<h4 id="dynamodb-の確認">DynamoDB の確認</h4>
+<p>Lambda 関数が正常に実行されていると、最終的にはDynamoDB テーブルにデータが格納されますので、まずはDynamoDB テーブルの確認をします。</p>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>DynamoDB</strong> を選択して、左側のメニューで <strong>テーブル</strong> をクリックします。</p></li>
+<li><p><strong>devawsome-photos</strong> をクリックします。</p></li>
+<li><p>右側にテーブルの詳細が表示されますので、<strong>項目</strong> タブをクリックします。</p></li>
+<li><p>以下のように先ほどアップロードした関する項目が追加されています。特に <strong>labels</strong> に画像の解析結果として、ラベルが付与されていることを確認してください。</p>
+<p><img src="images\Lab05-DynamoDB-Item.png" /></p>
+<p>次にLambda 関数の実行結果の確認で確認します。もし、DynamoDB テーブルにデータが格納されていなかった場合は、Lambda 関数の実行に失敗している可能性があります。</p></li>
+</ol>
+<h4 id="lambda-関数の実行結果の確認">Lambda 関数の実行結果の確認</h4>
+<p>Lambda の実行結果は、マネージメントコンソールで確認できます。もしDynammoDB にデータが格納されていなかった場合は、Lambda の実行で問題が生じている可能性があり、ここでトラブルシュートできます。</p>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>Lambda</strong> を選択します。</p></li>
+<li><p>関数名が <strong>DevAWSome-ImageLambda</strong> のリンクをクリックします。</p></li>
+<li><p><strong>DevAWSome-ImageLambda</strong> 画面で、<strong>モニタリング</strong> タブをクリックします。以下のようにメトリクスが確認できます。</p>
+<p><img src="images/Lab05-Lambda-Monitoring.png" /></p>
+<p>DynamoDB にデータが格納されていなかった場合は、以下の点を確認してください。</p>
+<ul>
+<li><strong>Invocations</strong> が 0 のままの場合
+<ul>
+<li>S3 のイベント設定を見直してください。またS3 バケットに画像が格納されたか確認してください。</li>
+</ul></li>
+<li><strong>Errors</strong> が１以上になっている場合
+<ul>
+<li>次の手順の <strong>CloudWatach Logs</strong> の確認で、エラー内容を確認します。</li>
+</ul></li>
+</ul></li>
+<li><p>Lambda 関数の実行時のログは、<strong>CloudWatch Logs</strong> に出力されます。画面上の <strong>CloudWatch のログを表示</strong> をクリックしてください。<br />
+以下のような画面が表示されます。</p>
+<p><img src="images/Lab05-CloudWatch-Logs.png" /></p></li>
+<li><p><strong>CloudWatch Logs</strong> には、Lambda 関数の実行開始時間・終了時間、実行レポートなどが出力されます。エラーが発生した場合はエラーの内容も出力されます。また、コード内で標準出力に出力したデータも出力されます。<br />
+今回のコードは、Pyton で実装されていますが、<strong>lambda_function.py</strong> のコード内の、<strong>print()</strong> で出力されているデータが<strong>CloudWatch Logs</strong> に出力されていることが確認できます。</p>
+<p>以上で、動作確認は終了です。</p></li>
+</ol>
+<hr />
+<h2 id="コードの解説">コードの解説</h2>
+<p><strong>注</strong> ここから先は、コードの解説をしています。ここは飛ばして次のラボに進むこともできます。</p>
+<p>Lambda では、現在(2018/04現在)以下のような言語をサポートしています。</p>
+<ul>
+<li>C#</li>
+<li>Go</li>
+<li>Java</li>
+<li>Node</li>
+<li>Python</li>
+</ul>
+<p>このラボでは、Python コードで記述したLambda 関数を作成しました。 Lambda 関数には、<strong>photoapp</strong> &gt; <strong>lambda</strong> &gt; <strong>python</strong> に格納されている <strong>lambda_funcion.py</strong> を登録しました。</p>
+<p>アプリケーションが実行されると、S3 のイベント経由で、Lambda 関数が実行されました。以下のような流れです。</p>
+<pre><code>  Application → S3 →(put event) → Lambda (python)</code></pre>
+<p>利用者はLambda 関数の登録をしただけで、実際のそのコードが動作するEC2 インスタンスなどのサーバを用意していません。Lambda 関数は、AWS が用意した実行環境上で自動的に実行される仕組みになっています。<br />
+コードを実行するためのサーバを用意する必要がないので、Lambda のようなサービスのことを <strong>サーバーレス</strong> と呼びます。<strong>サーバーレス</strong> という言葉は、Lambda サービスだけを指すのではなく、サーバを利用しないアーキテクチャ全般を指します。 例えば、S3 からデータを直接配信する場合、利用者はWebサーバを自前で用意する必要がありません。これも <strong>サーバーレス</strong> の一つです。全体的に自前のサーバを用意せずに構成されたアーキテクチャのことを <strong>サーバーレスアーキテクチャ</strong> と呼びます。</p>
+<p>それでは、<strong>lambda_funcion.py</strong> の中身を少し見てみます。</p>
+<p>まずは、Python 用のSDK である <strong>boto3</strong> をimport しています。 <strong>boto3</strong> そのものはLambda 実行環境上にデフォルトで含まれていますので、デプロイの中に含める必要はありません。</p>
+<pre><code>import boto3
+
+s3 = boto3.client(&#39;s3&#39;)
+rek = boto3.client(&#39;rekognition&#39;)
+dynamodb = boto3.resource(&#39;dynamodb&#39;)</code></pre>
+<p>今回、各ライブラリを以下の用途で利用しています。</p>
+<ul>
+<li>s3: メタ情報を取得する</li>
+<li>rekognition: 画像ラベルを取得する</li>
+<li>dynamodb: DynamoDB テーブルに項目を登録する</li>
+</ul>
+<p>このラボでは、S3 のPut イベントに紐づけてLambda を登録しました。S3 に画像ファイルがPut されると、以下の <code>lambda_handler</code> メソッドがコールされます。</p>
+<pre><code>  def lambda_handler(event, context):
+      &quot;Process upload event, get labels and update database&quot;
+      bucket = event[&#39;Records&#39;][0][&quot;s3&quot;][&quot;bucket&quot;][&quot;name&quot;]
+      key = event[&#39;Records&#39;][0][&quot;s3&quot;][&quot;object&quot;][&quot;key&quot;]
+      key = key.replace(&quot;%3A&quot;, &quot;:&quot;);</code></pre>
+<p>このメソッドでは、まずS3 のPutイベントから投げられたJSON 形式のイベントデータから、対象となるバケット名とオブジェクトキーを取得しています。<br />
+lambda 関数には、イベントに応じたデータが JSON形式で渡ってきます。</p>
+<p>次に、S3 から <code>head_object</code> をコールしてメタデータを取得します。このアプリケーションでは、<strong>username</strong> と <strong>description</strong> を取得しています。</p>
+<pre><code>response = s3.head_object(Bucket=bucket, Key=key)
+username =  response[&#39;Metadata&#39;][&#39;username&#39;];
+description = response[&#39;Metadata&#39;][&#39;description&#39;]</code></pre>
+<p>Lambda からS3 にリクエストを投げる場合にも、アクセス権限が必要であり、処理の裏側では、リクエストへの署名処理が行われています。python の場合は、boto3 が自動的に署名処理していますが、元になる一時的な認証情報は、Lambda を設定するときに指定した、<code>DevAWSome-ImageLabelRole</code> が利用されています。</p>
+<p>画像のラベル認識は、以下のような処理になります。画像データそのものを送るわけではなく、S3 上に格納された画像データの場所を伝えます。</p>
+<pre><code>response = rek.detect_labels(
+    Image={
+        &#39;S3Object&#39;: {
+            &#39;Bucket&#39;: bucket,
+            &#39;Name&#39;: key
+        }
+    })
+all_labels = [label[&#39;Name&#39;] for label in response[&#39;Labels&#39;]]</code></pre>
+<p>最後に、DynamoDB への格納処理となります。DynamoDB はテーブルに格納するデータのことをItem (日本語で’項目’) と呼びます。データを登録する場合は、<code>put_item</code> をコールします。</p>
+<pre><code>table    = dynamodb.Table(&#39;devawsome-photos&#39;)
+response = table.put_item(
+    Item={
+        &#39;username&#39;: username,
+        &#39;objectkey&#39;: key,
+        &#39;description&#39;: description,
+        &#39;labels&#39;: csv_labels,
+        &#39;updatetime&#39;: datetime.now().strftime(&#39;%Y%m%d%H%M%S&#39;)
+    }
+)</code></pre>
+<p>以上で、このラボは終了です。</p>
+</body>
+</html>

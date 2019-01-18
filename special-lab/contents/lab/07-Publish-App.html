@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>07-Publish-App</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">07-Publish-App</h1>
+</header>
+<h1 id="lab07-アプリケーションをビルドしてs3上で公開する">Lab07: アプリケーションをビルドしてS3上で公開する</h1>
+<p>このラボでは、これまで作成したアプリケーションをビルドして、S3 で公開します。</p>
+<p><img src="images/Lab07-Architecture.png" /></p>
+<hr />
+<h2 id="アプリケーションのビルドと公開">アプリケーションのビルドと公開</h2>
+<ol type="1">
+<li><p>Cloud9 画面を表示して、ターミナルを表示してください。</p></li>
+<li><p>以下のコマンドを実行してアプリケーションをビルドします。</p>
+<pre><code>
+cd ~/environment/photoapp/web
+yarn build
+</code></pre>
+<p>以下のような内容が出力されます。（初回実行時は１～２分かかる可能性があります。）</p>
+<pre><code>Compiled successfully.
+
+File sizes after gzip:
+
+  199.14 KB (+78 B)  build/static/js/main.4c879a13.js
+  109 B              build/static/css/main.65027555.css
+
+～ 略 ～
+
+Done in 25.21s.</code></pre>
+<p><strong>build</strong> ディレクトリが作成され、配信用のファイルが格納されています。</p>
+<details>
+<summary><strong>yarn build を実行したらCloud9 がハングアップした場合（展開して手順を表示）</strong></summary>
+<p>
+<p>今回はCloud9 の実行環境として、無償で利用可能なt2.micro (vCPU:1、Memory 1GiB) を利用していますが、スペック不足によりBuild 処理でハングする場合があります。<br />
+ハングした場合は以下の手順でCloud9 を実行しているEC2 インスタンスを再起動してください。</p>
+<ul>
+<li>マネージメントコンソールで サービス &gt; EC2 を表示します。
+<ul>
+<li>インスタンス一覧から“aws-cloud9-DevAWSomeDay-XXXX” を右クリックし、<strong>インスタンスの状態</strong> &gt; <strong>再起動</strong> を選択します。<br />
+</li>
+<li><strong>インスタンスの再起動</strong> ダイアログで <strong>再起動</strong> ボタンをクリックします。<br />
+</li>
+<li>Cloud9 画面に戻ります。再起動中は <strong>Connecting</strong> と表示されていますので、画面が元に戻るまで待ちます。<br />
+</li>
+<li>画面が利用できるようにあったら再度 <strong>yarn build</strong> を実行してください。</li>
+</ul>
+今回無償利用枠のt2.micro を利用しましたが、スペックの高いEC2 インスタンスを利用すればこの問題は起こりません。
+</p>
+</details></li>
+</ul></li>
+<li><p>公開用のS3 バケットを作成して、生成されたファイルをS3 バケット上にアップロードします。以下のコマンドを実行してバケットを作成してください。(&lt;yourname&gt; はご自身の名前に置き換えてください)</p>
+<pre><code>cd ~/environment/photoapp/web/build
+
+aws s3 mb s3://devawsome-publish-&lt;yourname&gt; --region us-west-2
+</code></pre>
+<p>以下のように表示されます。</p>
+<pre><code>make_bucket: devawsome-publish-&lt;yourname&gt;</code></pre>
+<p>以下のようなエラーが出たら、バケット名が重複していますので、異なる名前で再度実行してください。</p>
+<pre><code>make_bucket failed: s3://devawsome-publish-&lt;yourname&gt; An error occurred (BucketAlreadyExists)</code></pre></li>
+<li><p>S3 バケットにファイルをアップロードします。以下のコマンドを実行してください。(&lt;yourname&gt; はご自身の名前に置き換えてください)</p>
+<pre><code>
+aws s3 sync . s3://devawsome-publish-&lt;yourname&gt; --acl public-read
+</code></pre>
+<p><code>s3 sync</code> 操作により、該当ディレクトリ内のファイルとS3 バケットが同期されます。また、<code>--acl public-read</code> オプションを付与すると、ファイルがバケットにアップロードされると同時に、パブリックで読み取りアクセス可能な権限が付与されます。</p></li>
+<li><p>S3 バケットの <strong>Static website hosting</strong> を有効にします。(&lt;yourname&gt; はご自身の名前に置き換えてください)</p>
+<pre><code>aws s3 website s3://devawsome-publish-&lt;yourname&gt; --index-document index.html
+</code></pre></li>
+<li><p>以下のURL にブラウザでアクセスすると、アプリケーションにアクセスできます。(&lt;yourname&gt; はご自身の名前に置き換えてください)</p>
+<pre><code>http://devawsome-publish-&lt;yourname&gt;.s3-website-us-west-2.amazonaws.com</code></pre>
+<h2>
+おめでとうございます！以上で、アプリケーションの公開が完了しました！
+</h2></li>
+</ol>
+<p>以上で、このラボは終了です。</p>
+</body>
+</html>

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>04-S3-Upload</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <link rel="stylesheet" href="github.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+      $('a[href^="http"]:not([href*="' + location.hostname + '"])').attr('target', '_blank').attr('rel', 'noopener noreferrer');
+  })
+  </script>
+</head>
+<body>
+<header>
+<h1 class="title">04-S3-Upload</h1>
+</header>
+<h1 id="lab04-amazon-s3-に画像をアップロードできるようにする">Lab04: Amazon S3 に画像をアップロードできるようにする</h1>
+<p>このラボでは、アプリケーションからAmazon S3 に画像をアップロードできるようにします。画像データのアップロードは、アプリケーションにサインインしているユーザのみが可能となります。</p>
+<p><img src="images/Lab04-Architecture.png" /></p>
+<hr />
+<h2 id="s3-を構成する">S3 を構成する</h2>
+<p>S3 (Simple Storage Service) とは、インターネット経由でアクセスできる非常にスケーラブルで耐久性の高いオブジェクトストレージです。ウェブサイトやモバイルアプリケーション、社内アプリケーション、IoT センサーやデバイスからのデータなど、どこからでも、どのような量のデータでも保存と取得が可能です。</p>
+<p>今回は、アプリケーションから直接S3 に画像データをアップロードします。ただし、アプリケーションで認証済みのユーザのみがアップロードできるように構成します。</p>
+<h4 id="バケットの作成">バケットの作成</h4>
+<p>S3 を利用するには、データ(S3ではオブジェクトと呼びます) を格納するバケットを作成するところから開始します。まずは、画像データを格納するためのS3 バケットを作成します。</p>
+<ol type="1">
+<li><p>マネージメントコンソールにて <strong>サービス</strong> から <strong>S3</strong> をクリックします。(S3 はストレージカテゴリにあります。)</p></li>
+<li><p><strong>バケットを作成</strong> ボタンをクリックします。</p></li>
+<li><p><strong>バケット名</strong> に<code>devawsome-photo-&lt;yourname&gt;</code> と入力します。<code>&lt;yourname&gt;</code> にはご自身の名前を入れてください。（バケット名はグローバルで一意である必要があります。もし、<strong>バケット名はすでに存在しています</strong> とメッセージが表示された場合は、異なる名前を試してください。）</p></li>
+<li><p><strong>リージョン</strong> が <strong>米国西部(オレゴン)</strong> になっていることを確認して <strong>作成</strong> ボタンをクリックします。</p></li>
+<li><p>作成したバケットがバケット一覧に表示されていることを確認します。<br />
+表示されていない場合は一覧右上の更新ボタン(<img src="images/Lab04-update-icon.png" alt="更新ボタン" />) をクリックして一覧を更新してください。</p></li>
+</ol>
+<h4 id="バケットのcors-設定">バケットのCORS 設定</h4>
+<p>CORS(Cross Origin Resource Sharing) とは、別のオリジンから取得したJavaScript からのアクセスをセキュリティの観点からコントロールするための仕組みです。<br />
+下の図で解説すると、bucket-b から取得したHTML/JavaScript がブラウザ上で動作し、そのJavaScript から別バケット(ドメイン: buacket-a.s3.amazonaws.com ) にリクエストを投げた場合に、そのリクエストを許可するかどうかをbucket-a 側のCORS により制御できます。</p>
+<p><img src="images/Lab04-CORS.png" /></p>
+<ol type="1">
+<li><p>マネージメントコンソールで、先ほど作成したS3バケット(<code>devawsome-photo-&lt;yourname&gt;</code>) をクリックします。</p></li>
+<li><p>画面上のタブが並んでいるところで、<strong>アクセス権限</strong> タブをクリックします。</p></li>
+<li><p><strong>CORSの設定</strong> ボタンをクリックします。</p></li>
+<li><p><strong>CORS 構成エディター</strong> 内のコードを以下の内容で書き換えます。</p>
+<pre><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;CORSConfiguration xmlns=&quot;http://s3.amazonaws.com/doc/2006-03-01/&quot;&gt;
+  &lt;CORSRule&gt;
+        &lt;AllowedOrigin&gt;*&lt;/AllowedOrigin&gt;
+        &lt;AllowedMethod&gt;HEAD&lt;/AllowedMethod&gt;
+        &lt;AllowedMethod&gt;GET&lt;/AllowedMethod&gt;
+        &lt;AllowedMethod&gt;PUT&lt;/AllowedMethod&gt;
+        &lt;AllowedMethod&gt;POST&lt;/AllowedMethod&gt;
+        &lt;AllowedMethod&gt;DELETE&lt;/AllowedMethod&gt;
+        &lt;MaxAgeSeconds&gt;3000&lt;/MaxAgeSeconds&gt;
+        &lt;ExposeHeader&gt;x-amz-server-side-encryption&lt;/ExposeHeader&gt;
+        &lt;ExposeHeader&gt;x-amz-request-id&lt;/ExposeHeader&gt;
+        &lt;ExposeHeader&gt;x-amz-id-2&lt;/ExposeHeader&gt;
+        &lt;AllowedHeader&gt;*&lt;/AllowedHeader&gt;
+  &lt;/CORSRule&gt;
+&lt;/CORSConfiguration&gt;
+</code></pre>
+<blockquote>
+<p><strong>Note</strong>: &lt;AllowOrigin&gt; を特定のドメインに絞り込むことも可能です。</p>
+</blockquote></li>
+<li><p>右上の<strong>保存</strong> ボタンをクリックします。</p>
+<p>以上でCORS の設定は終了です。</p></li>
+</ol>
+<h4 id="s3-バケットへのアップロード処理をアプリケーションに追加する">S3 バケットへのアップロード処理をアプリケーションに追加する</h4>
+<ol type="1">
+<li><p>Cloud9 画面を表示します。</p></li>
+<li><p>Cloud9 画面にて、<strong>photoapp</strong> &gt; <strong>web</strong> &gt; <strong>src</strong> まで展開し、<code>config.js</code> を開きます。</p></li>
+<li><p><strong>bucket</strong> 部分に先ほど作成したバケットのバケット名を記述します。以下のようになります。(yourname はご自身で設定した名前に置き換えてください。また、<strong>region</strong> は<code>us-west-2</code> のままにしておきます。)</p>
+<pre><code>Storage: {
+  bucket: &#39;devawsome-photo-&lt;yourname&gt;&#39;,   
+  region: &#39;us-west-2&#39;
+}</code></pre></li>
+<li><p><strong>config.js</strong> を保存します。</p></li>
+<li><p>次に、<strong>MyPhotos.js</strong> ファイルを開いてください。</p></li>
+<li><p><code>Task: S3 Upload</code> と記述されている箇所を探します。</p></li>
+<li><p>S3 へのPut 処理(Storage.Put )部分のコメント(<code>/* */</code>)を取り除きます。</p>
+<pre><code>修正前：
+
+// Task: S3 Upload
+console.log(&quot;Define S3 Put Operation here.&quot;);
+/*  ← 取り除く
+Storage.put(photokey, file, {
+        level: &#39;private&#39;,
+        contentType: contentType,
+        metadata: {
+            username: username,
+            description: Base64.encode(this.state.desc)
+        }
+    })
+    .then(result =&gt; {
+        console.log(result);
+        alert(&quot;Uploading succeeded&quot;);
+    })
+    .catch(err =&gt; {
+        console.log(err);
+        alert(&quot;Err: &quot; + err);
+    }
+*/  ← 取り除く</code></pre>
+<pre><code>修正後：
+
+// Task: S3 Upload
+console.log(&quot;Define S3 Put Operation here.&quot;);
+Storage.put(photokey, file, {
+        level: &#39;private&#39;,
+        contentType: contentType,
+        metadata: {
+            username: username,
+            description: Base64.encode(this.state.desc)
+        }
+    })
+    .then(result =&gt; {
+        console.log(result);
+        alert(&quot;Uploading succeeded&quot;);
+    })
+    .catch(err =&gt; {
+        console.log(err);
+        alert(&quot;Err: &quot; + err);
+    }</code></pre></li>
+<li><p>アプリケーションの確認をしてみます。<code>yarn start</code> が実行されていることを確認してください。実行されていない場合は、ターミナルで、<code>cd ~/environment/photoapp/web</code> に移動して、<code>yarn start</code> を実行します。</p></li>
+<li><p>すでに前のラボで、Preview 画面が表示されている場合は、更新ボタン（矢印が丸まったアイコン）を押してください。ブラウザの別タブで表示している場合も同様です。<br />
+もし、画面を閉じてしまっている場合は、<strong>Preview</strong> &gt; <strong>Preview Running Application</strong> をクリックします。</p>
+<p>以下の画面が表示されていることを確認します。(Sign In画面が表示された場合はサインインしてください。)</p>
+<p><img src="images/Lab04-App-Preview.png" /></p></li>
+<li><p>アプリケーション画面で、<strong>ファイルを選択</strong> (Firefoxでは、<strong>参照…</strong> ) ボタンをクリックして任意の写真画像ファイルを選択します。（画像はなんでも良いですが、PC に画像ファイルが無い場合は、例えば猫の画像などをインターネットからダウンロードして利用してください。）<br />
+<strong>Note</strong> 拡張子が .jpg/.jpeg/.png の画像ファイルを利用してください。</p></li>
+<li><p><strong>Descrption</strong> にも任意の文字を入力して、<strong>Upload</strong> ボタンをクリックします。以下のエラーが発生します。</p>
+<pre><code>Err: AccessDenied: Access Denied</code></pre>
+<p>S3 のバケットにはアクセス権限がないとアクセスすることができません。現在のアプリケーションでは、まだS3 バケットに対するアクセス権限がない状況です。</p></li>
+</ol>
+<h4 id="アプリケーションにs3-バケットへのアクセス権限を付与する">アプリケーションにS3 バケットへのアクセス権限を付与する</h4>
+<p>アクセス権限をアプリケーションにどのように与えればよいでしょうか？ それには、前のLab の <strong>Cognito Identity Pool</strong> で設定したIAM ロールを利用することができます。</p>
+<ol type="1">
+<li><p>マネージメントコンソールで、<strong>サービス</strong> &gt; <strong>Cognito</strong> を選択します。</p></li>
+<li><p><strong>フェデレーテッドアイデンティティの管理</strong> ボタンをクリックします。</p></li>
+<li><p><strong>DevAWSomeIDPool</strong> をクリックします。</p></li>
+<li><p>画面右上の <strong>IDプールの編集</strong> リンクをクリックします。</p></li>
+<li><p><strong>ID プールの編集</strong> 画面の中で、<strong>認証されたロール</strong> のロール名を確認します。ラボ手順通りに実施していると、<strong>Cognito_DevAWSomeIDPoolAuth_Role</strong> となっています。<br />
+アプリケーションで認証を受けたユーザには、この <strong>認証されたロール</strong> に割り当たっているポリシーの権限を与えることができます。</p></li>
+<li><p>それでは、実際に <strong>Cognito_DevAWSomeIDPoolAuth_Role</strong> ロールに、S3 バケットへのアクセス権限を付与します。</p></li>
+<li><p>マネージメントコンソールの <strong>サービス</strong> &gt; <strong>IAM</strong> を選択します。</p></li>
+<li><p>IAM サービス画面の左側のメニューで、<strong>ロール</strong> をクリックします。</p></li>
+<li><p><strong>Cognito_DevAWSomeIDPoolAuth_Role</strong> を探して、ロール名のリンクをクリックします。(同じような名前で <strong>Unauth</strong> と名前の付いたロールがありますが、今回利用しませんので、間違って選択しないようにしてください。)</p></li>
+<li><p><strong>概要</strong> 画面で、画面右下の <strong>+インラインポリシーの追加</strong> をクリックします。</p>
+<p><img src="images\Lab04-IAMRole-Inlinepolicy.png" /></p></li>
+<li><p><strong>ポリシーの作成</strong> 画面で、<strong>JSON</strong> タブをクリックします。</p></li>
+<li><p>以下の内容で上書きします。(<code>&lt;yourname&gt;</code> はご自身で指定した内容に書き換えてください。)</p>
+<pre><code>{
+    &quot;Version&quot;: &quot;2012-10-17&quot;,
+    &quot;Statement&quot;: [
+        {
+            &quot;Sid&quot;: &quot;S3put01&quot;,
+            &quot;Effect&quot;: &quot;Allow&quot;,
+            &quot;Action&quot;: &quot;s3:PutObject&quot;,
+            &quot;Resource&quot;: [
+                &quot;arn:aws:s3:::devawsome-photo-&lt;yourname&gt;/*&quot;
+            ]
+        }
+    ]
+}</code></pre></li>
+<li><p>画面右下の <strong>Review policy</strong> ボタンをクリックします。</p></li>
+<li><p><strong>ポリシーの作成</strong> 画面にて、<strong>名前</strong> に “S3Put” と入力して、画面右下の <strong>Create poilcy</strong> ボタンをクリックします。</p>
+<blockquote>
+<p>ご参考：Cognito UserPool では認証しているユーザ/認証していないユーザという大きなくくりでIAM ロールを割り当てられることができますが、認証を受けたユーザごとに細かく権限を与えたいということもあります。そういう場合は、Cognito フェデレーティッドアイデンティティの機能により実現することができます。<br />
+https://docs.aws.amazon.com/ja_jp/cognito/latest/developerguide/role-based-access-control.html</p>
+</blockquote></li>
+</ol>
+<p>以上で、IAM ロールの設定は完了です。</p>
+<h4 id="アプリケーションの動作確認">アプリケーションの動作確認</h4>
+<p>Cloud9 画面に戻ってアプリケーションの動作確認を実施します。</p>
+<ol type="1">
+<li><p>Cloud9 でアプリケーションPreview を表示します。（別タブで開いている場合はその画面を表示します。)</p></li>
+<li><p>先ほどと同じように、<strong>ファイルを選択</strong> (Firefoxでは、<strong>参照…</strong> ) ボタンで画像ファイルを選択し、<strong>Description</strong> に任意の文字を入力し、<strong>Upload</strong> ボタンを押してください。</p></li>
+<li><p>以下のように成功メッセージが表示されます。</p>
+<pre><code>Uploading succeeded</code></pre>
+<p>先ほど設定したIAM ロールのポリシーが有効になっていることがわかります。</p></li>
+<li><p>S3 に画像がアップロードできているか確認します。マネージメントコンソールから <strong>サービス</strong> &gt; <strong>S3</strong> を選択して、先ほど作成した、<code>devawsome-photo-&lt;yourname&gt;</code> をクリックします。</p></li>
+<li><p>バケット内で、<strong>private</strong> &gt; <strong>us-west-2:xxxxxxxxxxx</strong> &gt; <strong>画像ファイル名</strong> が存在することを確認します。もし表示されていない場合は、右上の更新ボタン（矢印が丸まったアイコン) をクリックしてください。</p></li>
+<li><p><strong>画像ファイル名のリンク</strong> をクリックして詳細を表示します。</p></li>
+<li><p><strong>概要</strong> タブで、<strong>ダウンロード</strong> ボタンをクリックして、画像をダウンロードしてアップロードしたファイルであることを確認できます。</p></li>
+<li><p><strong>プロパティ</strong> タブをクリックして、<strong>メタデータ</strong> をクリックします。</p>
+<p><img src="images/Lab04-S3Obj-Metadata.png" /></p></li>
+<li><p>以下のように、アプリケーション側で指定した情報（username/description) が格納されていることが確認できます。(追加のメタデータには自動的に <code>x-amz-meta-</code> プレフィックスが付与されます。またdescription は アプリ側でBase64 エンコードしています。)</p>
+<p><img src="images/Lab04-S3Obj-Metadata3.png" /></p>
+<p>以上で、アプリケーションの動作確認は終了です。</p></li>
+</ol>
+<hr />
+<h2 id="コードの解説">コードの解説</h2>
+<p><strong>注</strong> ここから先は、コードの解説をしています。ラボの進行には関係しませんので、ここを飛ばして次のラボに進むこともできます。</p>
+<p>このラボでは、S3 に画像ファイルをアップロードするのに、AWS Amplify の <strong>Storage</strong> モジュールを利用しました。</p>
+<blockquote>
+<p>AWS Amplify Storage モジュールに関しては、以下のドキュメントを参考にしてください。<br />
+<a href="https://aws-amplify.github.io/docs/js/storage">AWS Amplify Storage</a></p>
+</blockquote>
+<p><strong>MyPhotos.js</strong> 内で、Storage モジュールは以下のように利用されています。Storage モジュールを利用することで非常に簡潔にS3 へのデータ操作を記述することができます。</p>
+<pre><code>import { Storage } from &#39;aws-amplify&#39;;
+
+～ 略 ～
+
+Storage.put(photokey, file, {
+        level: &#39;private&#39;,
+        contentType: contentType,
+        metadata: {
+            username: username,
+            description: Base64.encode(this.state.desc)
+        }
+    })
+    .then(result =&gt; {
+        console.log(result);
+        alert(&quot;Uploading succeeded&quot;);
+    })
+    .catch(err =&gt; {
+        console.log(err);
+        alert(&quot;Err: &quot; + err);
+    });</code></pre>
+<p>S3 に格納するキー（S3 ではオブジェクトキーと呼びます）とファイル本体(S3 ではオブジェクトと呼びます） を指定して、Put 処理をコールしています。その際、<strong>level</strong>、<strong>contentType</strong>、<strong>metadata</strong> などを指定できます。<br />
+<strong>level</strong> は、Amplify の Storage モジュール独自の指定で、S3 にオブジェクトを格納する際に、キーに自動的にCognito から払い出された <strong>userid</strong> を付与するように動作します。これによりユーザ固有のデータを切り分けることができます。（詳細に関しては、上述のドキュメントを参照してください。）</p>
+<p><strong>metadata</strong> には、画像をアップロードした <strong>username</strong> 情報や、画面に入力した、<strong>Description</strong> を格納しています。メタデータは、アプリケーション独自のデータを格納することができます。このデータは、次のラボで構築するLambda 内で取得され、最終的には DynamoDB テーブルに格納されます。</p>
+<p>また、今回利用しているS3 バケット(devawsome-photo-&lt;yourname&gt;) は、公開設定にしていないので、アプリケーションの動作で確認した通り、適切な権限がないとアクセスできません。ではこの権限はどのように扱われているのでしょうか？</p>
+<p><strong>Upload</strong> ボタンをクリックしたときにどのようなリクエストが <strong>S3</strong> に投げられているのかを調べてみます。<br />
+Cloud9 画面に戻り、アプリケーションをブラウザタブ内で実行してください。<strong>F12</strong> キーを押して、ブラウザの開発者ツールを開きます。先ほどのように <strong>Upload</strong> ボタンをクリックして画像ファイルをアップロードしてください。開発者ツールの <strong>Network</strong> (Chrome/Firefox/Safari どれも同じです。) を見ると、リクエストの中身を確認できます。(以下Chrome の例です)</p>
+<p><img src="images/Lab04-Chrome-S3-Request.png" /></p>
+<p>Request Header を見ると、以下のような <strong>Authorization</strong> ヘッダーが付与されています。この情報は、Cognito で認証を受けたユーザに、Cognito から払い出された一時的認証情報(Lab1 のEC2 で確認したものと一緒) を利用して作成された署名と言われるものです。この署名をHTTP リクエストに付与することでAWS API 側で認証を受けることができます。その後、API 側で適切な権限があること（＝ IAM ポリシーにアクセス権限が記述されている) が確認され、処理が実行されるという流れになります。</p>
+<blockquote>
+<p>Authorization: AWS4-HMAC-SHA256 Credential=ASIAIW2K4WOTUZIKGKNQ/20180413/us-west-2/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-meta-description;x-amz-meta-username;x-amz-security-token;x-amz-user-agent, Signature=5f313d1fe70d53bd2bd164df4510eae7a3e5df1c093552b58577da77a203fc8f</p>
+</blockquote>
+<p>このように、AWS API のコールには署名を付与する必要があります。ですが、このラボのコード内には、署名を作成してリクエストに付与するコードは記述していません。これらはすべて SDK (今回はAmplify) の中で実行されています。</p>
+<blockquote>
+<p>(参考) AWS API への署名方法の詳細は以下のドキュメントを参照してください。ただ、SDK が署名処理は実施しますので、細かく理解する必要はありません。<br />
+<a href="https://docs.aws.amazon.com/ja_jp/general/latest/gr/signing_aws_api_requests.html">AWS API リクエストへの署名</a></p>
+</blockquote>
+<p>以上で、このラボは終了です。</p>
+</body>
+</html>
